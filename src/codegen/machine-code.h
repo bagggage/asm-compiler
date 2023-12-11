@@ -10,6 +10,7 @@ namespace ASM::Codegen
     struct MachineCode
     {
         MachineCode() = default;
+        MachineCode(size_t size) : code(size) {}
         MachineCode(const std::vector<uint8_t>& otherCode);
 
         std::vector<uint8_t> code;

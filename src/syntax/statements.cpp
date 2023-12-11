@@ -1,5 +1,9 @@
 #include "statements.h"
 
+#include <cmath>
+#include <cstring>
+#include <memory>
+
 #include "context/context.h"
 #include "codegen/code-generator.h"
 
@@ -306,33 +310,122 @@ MachineCode InstructionStmt::CodeGen(CodeGenerator& generator) const
     return std::move(result);
 }
 
+void DefineDataStmt::CodeGenDataUnit(Expression* dataUnit, MachineCode& result, CodeGenerator& generator) const
+{
+    if (dataUnit->Is<LiteralExpr>()) {
+        LiteralExpr* literal = dataUnit->GetAs<LiteralExpr>();
+
+        if (literal->IsDependent()) [[likely]] {
+            for (auto c : literal->value) {
+                size_t value = c;
+                result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+            }
+        } else {
+            int64_t value = literal->Resolve();
+            result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+        }
+    }
+    else {
+        int64_t value = 0;
+
+        if (dataUnit->IsDependent())
+            generator.MakeValueLinkTarget(dataUnit, result->size(), dataUnitSize, LinkingTarget::Type::Integer);
+        else
+            value = dataUnit->Resolve();
+
+        result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+    }
+}
+
 MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
 {
     MachineCode result;
 
-    for (auto& dataUnit : units) {
-        if (dataUnit->Is<LiteralExpr>()) {
-            LiteralExpr* literal = dataUnit->GetAs<LiteralExpr>();
+    for (auto& dataUnit : units)
+    {
+        if (dataUnit->Is<DuplicateExpr>()) [[unlikely]]
+        {
+            DuplicateExpr* dupExpr = dataUnit->GetAs<DuplicateExpr>();
 
-            if (literal->IsDependent()) [[likely]] {
-                for (auto c : literal->value) {
-                    size_t value = c;
-                    result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+            auto count = generator.ResolveExpression(dupExpr->GetCountExpression());
+
+            if (count.has_value() == false) [[unlikely]]
+            {
+                generator.GetContext().Error(
+                    "Count expression for \'dup\' must be known at code generation stage, can't resolve dependencies",
+                    dupExpr->GetLocation(),
+                    dupExpr->GetLength()
+                );
+
+                continue;
+            }
+
+            if (*count < 0) [[unlikely]]
+            {
+                generator.GetContext().Error(
+                    "Count for \'dup\' expression must be a positive value", 
+                    dupExpr->GetLocation(),
+                    dupExpr->GetLength()
+                    );
+                continue;
+            }
+
+            if (dupExpr->GetValueExpression()->IsDependent() == false && *count > 1) {
+                size_t unitBeginIdx = result->size();
+                CodeGenDataUnit(dupExpr->GetValueExpression(), result, generator);
+                size_t unitEndIdx = result->size();
+
+                result->resize(unitEndIdx + *count - 1);
+
+                switch (dataUnitSize)
+                {
+                case 1:
+                {
+                    std::fill(result->begin() + unitEndIdx, result->end(), result[unitBeginIdx]);
+                    break;
                 }
-            } else {
-                int64_t value = literal->Resolve();
-                result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+                case 2:
+                {
+                    uint16_t* data = reinterpret_cast<uint16_t*>(result->data() + unitEndIdx);
+                    uint16_t value = *reinterpret_cast<uint16_t*>(result->data() + unitBeginIdx);
+
+                    for (size_t i = 0; i < *count - 1; ++i)
+                        data[i] = value;
+
+                    break;
+                }
+                case 4:
+                {
+                    uint32_t* data = reinterpret_cast<uint32_t*>(result->data() + unitEndIdx);
+                    uint32_t value = *reinterpret_cast<uint32_t*>(result->data() + unitBeginIdx);
+
+                    for (size_t i = 0; i < *count - 1; ++i)
+                        data[i] = value;
+
+                    break;
+                }
+                case 8:
+                {
+                    uint64_t* data = reinterpret_cast<uint64_t*>(result->data() + unitEndIdx);
+                    uint64_t value = *reinterpret_cast<uint64_t*>(result->data() + unitBeginIdx);
+
+                    for (size_t i = 0; i < *count - 1; ++i)
+                        data[i] = value;
+
+                    break;
+                }
+                default:
+                    assert(false);
+                    break;
+                }
+            }
+            else {
+                CodeGenDataUnit(dupExpr->GetValueExpression(), result, generator);
             }
         }
-        else {
-            int64_t value = 0;
-
-            if (dataUnit->IsDependent())
-                generator.MakeValueLinkTarget(dataUnit.get(), result->size(), dataUnitSize, LinkingTarget::Type::Integer);
-            else
-                value = dataUnit->Resolve();
-
-            result.Push(reinterpret_cast<uint8_t*>(&value), dataUnitSize);
+        else
+        {
+            CodeGenDataUnit(dataUnit.get(), result, generator);
         }
     }
 
@@ -349,7 +442,89 @@ MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
 //    return valueExpression->Simplify() || countExpression->Simplify();
 //}
 
-MachineCode DuplicateStmt::CodeGen(CodeGenerator& generator) const
+MachineCode OrgStmt::CodeGen(Codegen::CodeGenerator& generator) const
 {
     MachineCode result;
+
+    auto org = generator.ResolveExpression(value.get());
+
+    if (org.has_value() == false) [[unlikely]]
+    {
+        generator.GetContext().Error("Can't resolve expression dependencies on code generation stage", location, length);
+        return result;
+    }
+
+    if (*org < 0) [[unlikely]]
+    {
+        generator.GetContext().Error("Origin must be a positive integer value", location, length);
+        return result;
+    }
+
+    size_t currentOrg = generator.GetContext().GetSymbolTable().GetOrigin();
+
+    if (currentOrg != 0 && currentOrg != org)
+    {
+        generator.GetContext().Warn("Origin redefenition ingnored", location, length);
+        return result;
+    }
+
+    generator.GetContext().GetSymbolTable().SetOrigin(*org);
+
+    return result;
+}
+
+MachineCode OffsetStmt::CodeGen(Codegen::CodeGenerator& generator) const
+{
+    MachineCode result;
+
+    auto offset = generator.ResolveExpression(value.get());
+
+    if (offset.has_value() == false) [[unlikely]]
+    {
+        generator.GetContext().Error("Can't resolve expression dependencies on code generation stage", location, length);
+        return result;
+    }
+
+    if (*offset < 0) [[unlikely]]
+    {
+        generator.GetContext().Error("Offset must be a positive integer value", location, length);
+        return result;
+    }
+
+    result->resize(*offset, generator.GetNopInstructionOpcode());
+
+    return result;
+}
+
+MachineCode AlignStmt::CodeGen(Codegen::CodeGenerator& generator) const
+{
+    MachineCode result;
+
+    auto align = generator.ResolveExpression(value.get());
+
+    if (align.has_value() == false) [[unlikely]]
+    {
+        generator.GetContext().Error("Can't resolve expression dependencies on code generation stage", location, length);
+        return result;
+    }
+
+    if  (*align == 0 || *align == 1) [[unlikely]]
+        return result;
+
+    float logVal = std::log2(*align);
+
+    //Check if align is power of 2
+    if (align < 0 || std::ceil(logVal) != std::floor(logVal))
+    {
+        generator.GetContext().Error("Align must be a positive power of two", location, length);
+        return result;
+    }
+
+    const MachineCode& code = generator.GetCurrentSectionCode();
+    size_t mod = code->size() % *align;
+    
+    if (mod > 0)
+        result->resize(*align - mod, generator.GetNopInstructionOpcode());
+
+    return result;
 }

@@ -11,6 +11,8 @@ namespace ASM
     {
     private:
         std::unordered_map<std::string, Symbol> symbolsMap;
+
+        size_t origin = 0;
     public:
         inline void AddSymbol(Symbol&& symbol) { symbolsMap[symbol.GetDeclaration().GetName()] = symbol; }
         inline void EvaluateSymbol(const std::string& symbolName, SymbolValue& value)
@@ -30,6 +32,9 @@ namespace ASM
         inline const Symbol& GetSymbol(const std::string& symbolName) const { return symbolsMap.at(symbolName); }
 
         inline bool HasSymbol(const std::string& symbolName) const { return symbolsMap.count(symbolName) > 0; }
+
+        inline size_t GetOrigin() const { return origin; }
+        inline void SetOrigin(size_t value) { origin = value; }
     };
 }
 

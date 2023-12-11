@@ -174,6 +174,31 @@ namespace ASM::AST
 
         inline const std::string& GetName() const { return name; }
     };
+
+    struct DuplicateExpr : public Expression
+    {
+    private:
+        friend class ASM::Parser;
+
+        std::unique_ptr<Expression> countExpression;
+        std::unique_ptr<Expression> valueExpression;        
+    public:
+        DuplicateExpr(Expression* countExpr, Expression* valueExpr)
+        {
+            countExpression.reset(countExpr);
+            valueExpression.reset(valueExpr);
+        }
+
+        int64_t Resolve(const std::unordered_map<std::string, int64_t>& symbolsMap = {}) const override;
+
+        bool IsDependent() const override;
+        bool Simplify() override;
+
+        std::vector<const std::string*> GetDependecies() const override;
+
+        inline Expression* GetCountExpression() { return countExpression.get(); }
+        inline Expression* GetValueExpression() { return valueExpression.get(); }
+    };
 }
 
 #endif

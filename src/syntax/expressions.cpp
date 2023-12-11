@@ -292,3 +292,28 @@ bool SymbolExpr::Simplify()          { return false; }
 std::vector<const std::string*> SymbolExpr::GetDependecies() const {
     return { &name };
 }
+
+int64_t DuplicateExpr::Resolve(const std::unordered_map<std::string, int64_t>& symbolsMap) const
+{
+    return valueExpression->Resolve(symbolsMap);
+}
+
+bool DuplicateExpr::IsDependent() const 
+{
+    return valueExpression->IsDependent() || countExpression->IsDependent();
+}
+
+bool DuplicateExpr::Simplify()
+{
+    return true;
+}
+
+std::vector<const std::string*> DuplicateExpr::GetDependecies() const
+{
+    auto valueDependencies = valueExpression->GetDependecies();
+    auto countDependencies = countExpression->GetDependecies();
+
+    valueDependencies.insert(valueDependencies.end(), countDependencies.begin(), countDependencies.end());
+
+    return valueDependencies;
+}

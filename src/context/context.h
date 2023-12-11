@@ -51,6 +51,8 @@ namespace ASM
 
         AssemblyContext(std::istream& sourceStream, const InstructionSet_t& instructionSet);
 
+        static constexpr std::string_view UnnamedSection = "$unnamed";
+
         inline void SetDirectMode() { mode = AssemblyMode::Direct; };
         inline void SetParallelMode(Lexer& lexer) { mode = AssemblyMode::Parallel; }
 

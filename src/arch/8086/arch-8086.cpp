@@ -406,6 +406,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0xF7}, OpEn::M, {{OpType::rm, 16}}, '\4'}
         }
     },
+    { "NOP", { {{0x90}, OpEn::ZO, {}} } },
     {
         "POP",
         {

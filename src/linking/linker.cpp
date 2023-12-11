@@ -16,7 +16,11 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
                     EvaluateSymbol(context->GetSymbolTable().GetSymbol(*depencency), depth + 1);
                 }
                 else {
-                    context->Error("Unable to evaluate all symbols, two symbols points to each other or recursive evaluating take too much passes");
+                    context->Error(
+                        "Unable to evaluate all symbols, two symbols points to each other or recursive evaluating take too much passes",
+                        symbol.GetDeclaration().GetLocation(),
+                        symbol.GetDeclaration().GetLength()
+                    );
                     return;
                 }
             }
@@ -35,8 +39,8 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
         }
 
         const LableDecl* lableDecl = symbol.GetDeclaration().GetAs<LableDecl>();
-
-        int64_t value = symbol.GetValue().GetAsInt();
+        
+        int64_t value = symbol.GetValue().GetAsInt() + context->GetSymbolTable().GetOrigin();
 
         auto& targetSection = context->GetTranslationUnit().GetSectionMap().at(lableDecl->GetRelatedSection()->GetName());
 

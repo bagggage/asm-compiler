@@ -100,6 +100,9 @@ AbstractSyntaxTree Parser::Parse()
 {
     AbstractSyntaxTree result;
 
+    result.push_back(std::make_unique<SectionDecl>(context->UnnamedSection.data()));
+    currentSection = result.back()->GetAs<SectionDecl>();
+
     if (tokenStream.empty())
     {
         if (context->IsCurrentMode(AssemblyMode::Parallel)) {
@@ -135,7 +138,7 @@ AbstractSyntaxTree Parser::Parse()
                 success = ParseLableDecl(*reinterpret_cast<LableDecl*>(result.back().get()));
 
                 break;  
-            }   
+            }
             else if (nextTokSameLine && nextTok.Is(TokKind::kw_equ))   
             {   
                 if (hasMnemonicWithSuchName)    
@@ -179,6 +182,27 @@ AbstractSyntaxTree Parser::Parse()
         {
             result.push_back(std::make_unique<SymbolDecl>(""));
             success = ParseSymbolDecl(*reinterpret_cast<SymbolDecl*>(result.back().get()));
+
+            break;
+        }
+        case TokKind::kw_align:
+        {
+            result.push_back(std::make_unique<AlignStmt>());
+            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
+
+            break;
+        }
+        case TokKind::kw_offset:
+        {
+            result.push_back(std::make_unique<OffsetStmt>());
+            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
+
+            break;
+        }
+        case TokKind::kw_org: 
+        {
+            result.push_back(std::make_unique<OrgStmt>());
+            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
 
             break;
         }
@@ -690,33 +714,44 @@ bool Parser::ParseDefineDataStmt(DefineDataStmt& result)
 
         if (next->Is(TokKind::kw_dup))
         {
-            if (result.units.size() != 1)
+            if (result.units.size() < 1)
             {
-                context->Error("Data define with dup must have only one size operand", tokenStream.front().GetLocation());
+                context->Error("Data define with \'dup\' requires count defenition before \'dup\' keyword", tokenStream.front().GetLocation());
 
                 return false;
             }
 
-            //result.isDup = true;
             //result.dupValue = std::make_unique<ParenExpr>(nullptr);
+            Expression* countExpr = result.units.back().get();
+            result.units.back().release();
+
+            SourceLocation dupLocation = next->GetLocation();
 
             //Skip to kw_dup
             NextToken();
             //Skip kw_dup to '(' paren
             NextToken();
 
-            //if (ParseParenExpr(*reinterpret_cast<ParenExpr*>(result.dupValue.get())) == false)
-            //{
-            //    result.dupValue.reset(nullptr);
-            //    return false;
-            //}
+            ParenExpr* valueExpr = new ParenExpr(nullptr);
 
-            break;
+            if (ParseParenExpr(*valueExpr) == false)
+            {
+                result.units.pop_back();
+                return false;
+            }
+
+            DuplicateExpr* dupExpr = new DuplicateExpr(countExpr, valueExpr);
+
+            dupExpr->location = dupLocation;
+            dupExpr->length = valueExpr->GetLocation().sourcePointer + valueExpr->GetLength() - dupLocation.sourcePointer;
+
+            result.units.back().reset(dupExpr);
+
+            next = &LookAhead();
         }
-        else if (next->Is(TokKind::comma) == false || next->GetLocation().line != tokenStream.front().GetLocation().line)
-        {   
+
+        if (next->Is(TokKind::comma) == false || next->GetLocation().line != tokenStream.front().GetLocation().line)
             break;
-        }
 
         NextToken();
         next = &LookAhead();
@@ -726,4 +761,23 @@ bool Parser::ParseDefineDataStmt(DefineDataStmt& result)
         (tokenStream.front().GetLocation().sourcePointer + tokenStream.front().GetLength() - result.location.sourcePointer);
 
     return true;
+}
+
+bool Parser::ParseParametricStmt(AST::ParametricStmt& result)
+{
+    result.location = tokenStream.front().GetLocation();
+
+    Expression* value = nullptr;
+
+    NextToken();
+
+    bool success = ParsePrimary(value);
+
+    if (success)
+    {
+        result.value.reset(value);
+        result.length = value->GetLocation().sourcePointer + value->GetLength() - result.location.sourcePointer;
+    }
+
+    return success;
 }

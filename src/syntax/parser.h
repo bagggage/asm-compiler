@@ -54,6 +54,7 @@ namespace ASM
         bool ParseSectionDecl(AST::SectionDecl& result);
         bool ParseInstructionStmt(AST::InstructionStmt& result);
         bool ParseDefineDataStmt(AST::DefineDataStmt& result);
+        bool ParseParametricStmt(AST::ParametricStmt& result);
     };
 }
 

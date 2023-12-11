@@ -273,9 +273,51 @@ void CodeGenerator::MakeValueLinkTarget(Expression* expression, uint8_t offset, 
     ));
 }
 
+bool CodeGenerator::ResolveExpressionDependencies(
+    const AST::Expression* expression,
+    const std::string& symbolName,
+    std::unordered_map<std::string, int64_t>& symbolMap
+) const 
+{
+    auto dependencies = expression->GetDependecies();
+
+    if (dependencies.empty() == false) {
+        for (auto depenency : dependencies) {
+            if (context->GetSymbolTable().HasSymbol(*depenency) == false)
+                return false;
+
+            const SymbolDecl& declaration = context->GetSymbolTable().GetSymbol(*depenency).GetDeclaration();
+
+            if (declaration.Is<ConstantDecl>() == false)
+                return false;
+
+            if (ResolveExpressionDependencies(&declaration.GetAs<ConstantDecl>()->GetExpression(), declaration.GetName(), symbolMap) == false)
+                return false;
+        }
+    }
+    else if (symbolName.empty() == false && symbolMap.count(symbolName) == 0) {
+        symbolMap.insert({ symbolName, expression->Resolve(symbolMap) });
+    }
+
+    return true;
+}
+
+std::optional<int64_t> CodeGenerator::ResolveExpression(const Expression* expression) const
+{
+    std::optional<int64_t> result;
+    std::unordered_map<std::string, int64_t> symbolMap;
+    
+    if (ResolveExpressionDependencies(expression, std::string(), symbolMap) == false)
+        return result;
+
+    result = expression->Resolve(symbolMap);
+
+    return result;
+}
+
 TranslationUnit& CodeGenerator::ProccessAST(AbstractSyntaxTree& ast)
 {
-    ChangeCurrentSection(unnamedSection.data());
+    ChangeCurrentSection(context->UnnamedSection.data());
 
     for (auto& node : ast)
     {

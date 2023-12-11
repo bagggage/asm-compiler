@@ -60,20 +60,6 @@ namespace ASM::AST
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
     };
 
-    struct DuplicateStmt : public virtual Statement
-    {
-    private:
-        friend class ASM::Parser;
-
-        std::unique_ptr<Expression> countExpression;
-        std::unique_ptr<Expression> valueExpression;        
-    public:
-        //bool IsDependent() const override;
-        //bool Simplify() override;
-
-        Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
-    };
-
     struct DefineDataStmt : public Statement
     {
     private:
@@ -82,10 +68,38 @@ namespace ASM::AST
         uint8_t dataUnitSize = 1;
 
         std::vector<std::unique_ptr<Expression>> units;
+
+        void CodeGenDataUnit(Expression* dataUnit, Codegen::MachineCode& result, Codegen::CodeGenerator& generator) const;
     public:
         inline uint8_t GetDataUnitSize() const { return dataUnitSize; }
         inline std::vector<std::unique_ptr<Expression>>& GetUnits() { return units; }
 
+        Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+    };
+
+    struct ParametricStmt : public Statement
+    {
+    protected:
+        friend class ASM::Parser;
+
+        std::unique_ptr<Expression> value;
+    };
+
+    struct OrgStmt : public ParametricStmt
+    {
+    public:
+        Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+    };
+
+    struct OffsetStmt : public ParametricStmt
+    {
+    public:
+        Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+    };
+
+    struct AlignStmt : public ParametricStmt
+    {
+    public:
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
     };
 }

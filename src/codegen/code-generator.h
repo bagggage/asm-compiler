@@ -1,6 +1,8 @@
 #ifndef __ASM_CODE_GENERATOR_H
 #define __ASM_CODE_GENERATOR_H
 
+#include <optional>
+
 #include "context/context.h"
 #include "syntax/ast.h"
 #include "context/translation-unit.h"
@@ -17,9 +19,13 @@ namespace ASM::Codegen
         MachineCode* currentSectionCode = nullptr;
         Section* currentSection = nullptr;
 
-        static constexpr std::string_view unnamedSection = "$unnamed";
-
         void ChangeCurrentSection(const std::string& sectionName);
+
+        bool ResolveExpressionDependencies(
+            const AST::Expression* expression,
+            const std::string& symbolName,
+            std::unordered_map<std::string, int64_t>& symbolMap
+        ) const;
 
         static constexpr uint8_t highPriority = 2;
         static constexpr uint8_t lowPriority = 1;
@@ -31,6 +37,8 @@ namespace ASM::Codegen
         static Arch::OpType GetDirectEncodingOfRegisterOpType(AST::RegisterExpr* registerExpression);
         static SmallVector<Arch::OperandEvaluation, 4> EvaluateOperands(const AST::InstructionStmt::Operands_t& operands);
 
+        inline static uint8_t GetNopInstructionOpcode() { return Arch::Arch8086::InstructionSet.at("NOP").back().opcode.back(); }
+
         inline AssemblyContext& GetContext() const { return *context; }
 
         const Arch::Instruction* ChooseInstructionByOperands(const std::string& mnemonic, const AST::InstructionStmt::Operands_t& operands) const;
@@ -39,6 +47,10 @@ namespace ASM::Codegen
         void MakeAbsoluteLinkTarget(AST::Expression* expression, uint8_t offset, uint8_t size);
         void MakeRelativeLinkTarget(AST::Expression* expression, uint8_t offset, uint8_t size, uint8_t relativeOrigin);
         void MakeValueLinkTarget(AST::Expression* expression, uint8_t offset, uint8_t size, LinkingTarget::Type type);
+
+        std::optional<int64_t> ResolveExpression(const AST::Expression* expression) const;
+
+        inline const MachineCode& GetCurrentSectionCode() const { return *currentSectionCode; }
 
         TranslationUnit& ProccessAST(AbstractSyntaxTree& ast);
     };

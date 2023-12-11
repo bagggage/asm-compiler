@@ -1,6 +1,7 @@
 .vscode/**/*
 build/*
 bin/*
+.PVS-Studio/*
 
 *.com
 *.exe
