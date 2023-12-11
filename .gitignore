@@ -1,0 +1,9 @@
+.vscode/**/*
+build/*
+bin/*
+
+*.com
+*.exe
+*.asm
+
+**/.history
