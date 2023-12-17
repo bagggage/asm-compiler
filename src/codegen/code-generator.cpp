@@ -1,5 +1,7 @@
 #include "code-generator.h"
 
+#include <iostream>
+
 using namespace ASM;
 using namespace ASM::AST;
 using namespace ASM::Codegen;
@@ -74,7 +76,48 @@ uint8_t CodeGenerator::GetOperandTypePriority(Arch::OpType type)
     return lowPriority;
 }
 
-SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const InstructionStmt::Operands_t& operands)
+uint8_t CodeGenerator::EvaluateDependentOperandSize(const AST::Expression* operand) const 
+{
+    constexpr uint8_t maxBitsSize = 16;
+    auto dependencies = operand->GetDependecies();
+    std::unordered_map<std::string, int64_t> symbolMap;
+
+    for (auto depenency : dependencies)
+    {
+        if (context->GetSymbolTable().HasSymbol(*depenency) == false) {
+            return maxBitsSize;
+        }
+
+        auto& symbol = context->GetSymbolTable().GetSymbol(*depenency);
+        
+        if (symbol.GetDeclaration().GetScope() == SymbolDecl::Scope::Extern) [[unlikely]]
+            return maxBitsSize;
+
+        if (symbol.GetDeclaration().Is<LableDecl>()) {
+            const LableDecl* lableDecl = symbol.GetDeclaration().GetAs<LableDecl>();
+
+            if (currentSection != &context->GetTranslationUnit().GetOrMakeSection(lableDecl->GetRelatedSection()->GetName()))
+                return maxBitsSize;
+
+            constexpr const int64_t averageStmtSize = 3;
+            int64_t evaluation = lableDecl->GetSectionStmtOffset() * averageStmtSize;
+        }
+        else if (symbol.GetDeclaration().Is<ConstantDecl>()) {
+            const Expression* expression = &symbol.GetDeclaration().GetAs<ConstantDecl>()->GetExpression();
+
+            if (ResolveExpressionDependencies(expression, std::string(), symbolMap) == false)
+                return maxBitsSize;
+
+            symbolMap.insert({ *depenency, expression->Resolve(symbolMap) });
+        }
+    }
+
+    int64_t value = operand->Resolve(symbolMap);
+
+    return EvaluateLiteralByteSize(value) * 8;
+}
+
+SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const InstructionStmt::Operands_t& operands) const
 {
     SmallVector<Arch::OperandEvaluation, 4> result = SmallVector<Arch::OperandEvaluation, 4>(operands.size());
 
@@ -121,16 +164,18 @@ SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const In
         else
         {
             evaluation.kind = Arch::OperandEvaluation::Kind::Immediate;
-            evaluation.minRequiredSize = 16;
+            auto value = ResolveExpression(operand.get());
 
-            if (operand->IsDependent() == false)
+            if (value.has_value())
             {
-                int64_t value = operand->Resolve();
+                evaluation.minRequiredSize = EvaluateLiteralByteSize(*value) * 8;
 
-                evaluation.minRequiredSize = EvaluateLiteralByteSize(value);
-
-                if (value == 1)
+                if (*value == 1)
                     types.push_back(Arch::OpType::ONE);
+            }
+            else
+            {
+                evaluation.minRequiredSize = EvaluateDependentOperandSize(operand.get());
             }
 
             types.push_back(Arch::OpType::imm);
@@ -323,7 +368,12 @@ TranslationUnit& CodeGenerator::ProccessAST(AbstractSyntaxTree& ast)
     {
         if (node->Is<Statement>())
         {
-            currentSectionCode->operator<<(node->GetAs<Statement>()->CodeGen(*this));
+            try {
+                currentSectionCode->operator<<(node->GetAs<Statement>()->CodeGen(*this));
+            }
+            catch (std::exception& e) {
+                context->Error(e.what(), node->GetLocation(), node->GetLength());
+            }
         }
         else if (node->Is<SectionDecl>())
         {

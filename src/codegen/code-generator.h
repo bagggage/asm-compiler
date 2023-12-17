@@ -35,7 +35,8 @@ namespace ASM::Codegen
         static uint8_t EvaluateLiteralByteSize(int64_t value);
         static uint8_t GetOperandTypePriority(Arch::OpType type);
         static Arch::OpType GetDirectEncodingOfRegisterOpType(AST::RegisterExpr* registerExpression);
-        static SmallVector<Arch::OperandEvaluation, 4> EvaluateOperands(const AST::InstructionStmt::Operands_t& operands);
+        uint8_t EvaluateDependentOperandSize(const AST::Expression* operand) const;
+        SmallVector<Arch::OperandEvaluation, 4> EvaluateOperands(const AST::InstructionStmt::Operands_t& operands) const;
 
         inline static uint8_t GetNopInstructionOpcode() { return Arch::Arch8086::InstructionSet.at("NOP").back().opcode.back(); }
 
