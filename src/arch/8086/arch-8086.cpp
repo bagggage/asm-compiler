@@ -70,6 +70,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0xFF}, OpEn::M, {{OpType::m,   16}}, '\3'}
         }
     },
+    { "CLC", {{{0xF8}, OpEn::ZO, {}}} },
     {
         "CMP",
         {
@@ -365,8 +366,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0xE9}, OpEn::D, {{OpType::rel, 16}}},
             {{0xFF}, OpEn::D, {{OpType::rm,  16}}, '\4'},
             {{0xEA}, OpEn::S, {{OpType::ptr, 16}}},
-            {{0xFF}, OpEn::M, {{OpType::rm,  16}}, '\5'},
-            
+            {{0xFF}, OpEn::M, {{OpType::rm,  16}}, '\5'}   
         }
     },
     { "LEA",    {{ {0x8D}, OpEn::RM, {{OpType::r, 16}, {OpType::m}} }} },
@@ -406,7 +406,37 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0xF7}, OpEn::M, {{OpType::rm, 16}}, '\4'}
         }
     },
-    { "NOP", { {{0x90}, OpEn::ZO, {}} } },
+    { "NOP", {{{0x90}, OpEn::ZO, {}}} },
+    {
+        "NOT",
+        {
+            {{0xF6}, OpEn::M, {{OpType::rm, 8}},  '\2'},
+            {{0xF7}, OpEn::M, {{OpType::rm, 16}}, '\2'}
+        }
+    },
+    {
+        "OR",
+        {
+            {{0x0C}, OpEn::I,  {{OpType::AL},     {OpType::imm, 8}}},
+            {{0x0D}, OpEn::I,  {{OpType::AX},     {OpType::imm, 16}}},
+            {{0x80}, OpEn::MI, {{OpType::rm, 8},  {OpType::imm, 8}},  '\1'},
+            {{0x81}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 16}}, '\1'},
+            {{0x83}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\1'},
+            {{0x08}, OpEn::MR, {{OpType::rm, 8},  {OpType::r, 8}}},
+            {{0x09}, OpEn::MR, {{OpType::rm, 16}, {OpType::r, 16}}},
+            {{0x0A}, OpEn::RM, {{OpType::r,  8},  {OpType::rm, 8}}},
+            {{0x0B}, OpEn::RM, {{OpType::r,  16}, {OpType::rm, 16}}}
+        }
+    },
+    {
+        "OUT",
+        {
+            {{0xE6}, OpEn::I, {{OpType::imm, 8}, {OpType::AL}}},
+            {{0xE7}, OpEn::I, {{OpType::imm, 8}, {OpType::AX}}},
+            {{0xEE}, OpEn::I, {{OpType::DX},     {OpType::AL}}},
+            {{0xEF}, OpEn::I, {{OpType::DX},     {OpType::AX}}}
+        }
+    },
     {
         "POP",
         {
@@ -419,6 +449,8 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0x0F, 0xA9}, OpEn::ZO, {{OpType::GS}}},
         }
     },
+    { "POPA", {{{0x61}, OpEn::ZO, {}}} },
+    { "POPAD", {{{0x61}, OpEn::ZO, {}}} },
     {
         "PUSH",
         {
@@ -488,6 +520,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0xC1}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\5'}
         }
     },
+    { "STC", {{{0xF9}, OpEn::ZO, {}}} },
     {
         "SUB",
         {
@@ -501,6 +534,28 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0x29}, OpEn::MR, {{OpType::rm, 16}, {OpType::r,   16}}},
             {{0x2A}, OpEn::RM, {{OpType::r,  8},  {OpType::rm,  8}}},
             {{0x2B}, OpEn::RM, {{OpType::r,  16}, {OpType::rm, 16}}}
+        }
+    },
+    {
+        "TEST",
+        {
+            {{0xA8}, OpEn::I,  {{OpType::AL},     {OpType::imm, 8}}},
+            {{0xA9}, OpEn::I,  {{OpType::AX},     {OpType::imm, 16}}},
+            {{0xF6}, OpEn::MI, {{OpType::rm, 8},  {OpType::imm, 8}},  '\0'},
+            {{0xF7}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 16}}, '\0'},
+            {{0x84}, OpEn::MR, {{OpType::rm, 8},  {OpType::r,   8}}},
+            {{0x85}, OpEn::MR, {{OpType::rm, 16}, {OpType::r,   16}}}
+        }
+    },
+    {
+        "XCHG",
+        {
+            {{0x90}, OpEn::O,  {{OpType::AX},     {OpType::r,  16}}},
+            {{0x90}, OpEn::O,  {{OpType::r,  16}, {OpType::AX}}},
+            {{0x86}, OpEn::MR, {{OpType::rm, 8},  {OpType::r,  8}}},
+            {{0x86}, OpEn::RM, {{OpType::r,  8},  {OpType::rm, 8}}},
+            {{0x87}, OpEn::MR, {{OpType::rm, 16}, {OpType::r,  16}}},
+            {{0x87}, OpEn::RM, {{OpType::r,  16}, {OpType::rm, 16}}}
         }
     },
     {
