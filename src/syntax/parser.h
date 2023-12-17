@@ -22,6 +22,7 @@ namespace ASM
 
         uint32_t currentStmtOffset = 0;
         AST::SectionDecl* currentSection = nullptr;
+        AST::LableDecl* currentParentLable = nullptr;
 
         static const std::unordered_map<char, uint8_t> operatorPriorities;
         static const std::unordered_map<TokKind, char> kindOperatorToChar;

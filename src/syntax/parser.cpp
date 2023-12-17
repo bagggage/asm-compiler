@@ -120,109 +120,118 @@ AbstractSyntaxTree Parser::Parse()
         bool success = false;
         bool isChanged = true;
 
-        switch (token->GetKind())
+        try 
         {
-        case TokKind::identifier:
-        {
-            Token& nextTok = LookAhead();
-
-            bool nextTokSameLine = token->GetLocation().line == nextTok.GetLocation().line;
-            bool hasMnemonicWithSuchName = Arch::Arch8086::HasMnemonic(token->GetAsString()->GetValue());
-
-            if (nextTokSameLine && nextTok.Is(TokKind::colon))
+            switch (token->GetKind())
             {
-                if (hasMnemonicWithSuchName)
-                    context->Warn("Lable has the same name as mnemonic", token->GetLocation(), token->GetLength());
+            case TokKind::identifier:
+            {
+                Token& nextTok = LookAhead();
 
-                result.push_back(std::make_unique<LableDecl>("", currentSection));
-                success = ParseLableDecl(*reinterpret_cast<LableDecl*>(result.back().get()));
+                bool nextTokSameLine = token->GetLocation().line == nextTok.GetLocation().line;
+                bool hasMnemonicWithSuchName = Arch::Arch8086::HasMnemonic(token->GetAsString()->GetValue());
 
-                break;  
-            }
-            else if (nextTokSameLine && nextTok.Is(TokKind::kw_equ))   
-            {   
-                if (hasMnemonicWithSuchName)    
-                    context->Warn("Constant has the same name as mnemonic", token->GetLocation(), token->GetLength( ));
+                if (nextTokSameLine && nextTok.Is(TokKind::colon))
+                {
+                    if (hasMnemonicWithSuchName)
+                        context->Warn("Lable has the same name as mnemonic", token->GetLocation(), token->GetLength());
 
-                result.push_back(std::make_unique<ConstantDecl>("", nullptr));
-                success = ParseConstantDecl(*reinterpret_cast<ConstantDecl*>(result.back().get()));
+                    result.push_back(std::make_unique<LableDecl>("", currentSection));
+                    success = ParseLableDecl(*reinterpret_cast<LableDecl*>(result.back().get()));
+
+                    break;  
+                }
+                else if (nextTokSameLine && nextTok.Is(TokKind::kw_equ))   
+                {   
+                    if (hasMnemonicWithSuchName)    
+                        context->Warn("Constant has the same name as mnemonic", token->GetLocation(), token->GetLength( ));
+
+                    result.push_back(std::make_unique<ConstantDecl>("", nullptr));
+                    success = ParseConstantDecl(*reinterpret_cast<ConstantDecl*>(result.back().get()));
+
+                    break;
+                }
+                else if (hasMnemonicWithSuchName)
+                {
+                    result.push_back(std::make_unique<InstructionStmt>());
+                    success = ParseInstructionStmt(*reinterpret_cast<InstructionStmt*>(result.back().get()));
+
+                    break;
+                }
+                else if (Arch::Arch8086::DefineDataMnemonics.count(token->GetAsString()->GetValue()) > 0)
+                {
+                    result.push_back(std::make_unique<DefineDataStmt>());
+                    success = ParseDefineDataStmt(*reinterpret_cast<DefineDataStmt*>(result.back().get()));
+
+                    break;
+                }
+
+                context->Error("Unknown identifier", token->GetLocation(), token->GetLength());
+                isChanged = false;
 
                 break;
             }
-            else if (hasMnemonicWithSuchName)
+            case TokKind::kw_section: case TokKind::kw_segment:
             {
-                result.push_back(std::make_unique<InstructionStmt>());
-                success = ParseInstructionStmt(*reinterpret_cast<InstructionStmt*>(result.back().get()));
+                result.push_back(std::make_unique<SectionDecl>(""));
+                success = ParseSectionDecl(*reinterpret_cast<SectionDecl*>(result.back().get()));
+
+                currentSection = result.back()->GetAs<SectionDecl>();
 
                 break;
             }
-            else if (Arch::Arch8086::DefineDataMnemonics.count(token->GetAsString()->GetValue()) > 0)
+            case TokKind::kw_extern: case TokKind::kw_global:
             {
-                result.push_back(std::make_unique<DefineDataStmt>());
-                success = ParseDefineDataStmt(*reinterpret_cast<DefineDataStmt*>(result.back().get()));
+                result.push_back(std::make_unique<SymbolDecl>(""));
+                success = ParseSymbolDecl(*reinterpret_cast<SymbolDecl*>(result.back().get()));
 
                 break;
             }
-
-            context->Error("Unknown identifier", token->GetLocation(), token->GetLength());
-            isChanged = false;
-
-            break;
-        }
-        case TokKind::kw_section: case TokKind::kw_segment:
-        {
-            result.push_back(std::make_unique<SectionDecl>(""));
-            success = ParseSectionDecl(*reinterpret_cast<SectionDecl*>(result.back().get()));
-
-            currentSection = result.back()->GetAs<SectionDecl>();
-
-            break;
-        }
-        case TokKind::kw_extern: case TokKind::kw_global:
-        {
-            result.push_back(std::make_unique<SymbolDecl>(""));
-            success = ParseSymbolDecl(*reinterpret_cast<SymbolDecl*>(result.back().get()));
-
-            break;
-        }
-        case TokKind::kw_align:
-        {
-            result.push_back(std::make_unique<AlignStmt>());
-            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
-
-            break;
-        }
-        case TokKind::kw_offset:
-        {
-            result.push_back(std::make_unique<OffsetStmt>());
-            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
-
-            break;
-        }
-        case TokKind::kw_org: 
-        {
-            result.push_back(std::make_unique<OrgStmt>());
-            success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
-
-            break;
-        }
-        default:
-        {
-            context->Error("Unknown syntax", token->GetLocation());
-
-            unsigned int currentLine = token->GetLocation().line;
-            Token* next = &LookAhead();
-
-            while (currentLine == next->GetLocation().line && next->Is(TokKind::eof) == false)
+            case TokKind::kw_align:
             {
-                NextToken();
-                next = &LookAhead();
+                result.push_back(std::make_unique<AlignStmt>());
+                success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
+
+                break;
             }
+            case TokKind::kw_offset:
+            {
+                result.push_back(std::make_unique<OffsetStmt>());
+                success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
 
-            isChanged = false;
+                break;
+            }
+            case TokKind::kw_org: 
+            {
+                result.push_back(std::make_unique<OrgStmt>());
+                success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
 
-            break;
+                break;
+            }
+            default:
+            {
+                context->Error("Unknown syntax", token->GetLocation());
+
+                unsigned int currentLine = token->GetLocation().line;
+                Token* next = &LookAhead();
+
+                while (currentLine == next->GetLocation().line && next->Is(TokKind::eof) == false)
+                {
+                    NextToken();
+                    next = &LookAhead();
+                }
+
+                isChanged = false;
+
+                break;
+            }
+            }
         }
+        catch (std::exception& e) 
+        {
+            context->Error((std::string("Exception occured while parsing AST: ") + e.what()).c_str());
+
+            success = false;
         }
 
         if (!success && isChanged)
@@ -349,6 +358,19 @@ bool Parser::ParseExpression(Expression*& result)
         result = new SymbolExpr(firstToken.GetAsString()->GetValue());
         result->location = firstToken.GetLocation();
         result->length = firstToken.GetLength();
+
+        if (result->GetAs<SymbolExpr>()->name[0] == '.')
+        {
+            if (currentParentLable == nullptr)
+            {
+                context->Error("Using local lable symbol ouside of any parent lable", result->location, result->length);
+                return false;
+            }
+
+            SymbolExpr* symbolExpr = result->GetAs<SymbolExpr>();
+            symbolExpr->name.insert(symbolExpr->name.begin(), currentParentLable->name.begin(), currentParentLable->name.end());
+        }
+
         break;
     }
     case Token::Kind::string_literal:
@@ -593,10 +615,25 @@ bool Parser::ParseLableDecl(LableDecl& result)
 
     NextToken();
 
-    context->GetSymbolTable().AddSymbol(Symbol(&result));
-
     result.length =
         (tokenStream.front().GetLocation().sourcePointer + tokenStream.front().GetLength() - result.location.sourcePointer);
+
+    //Local 
+    if (result.name[0] == '.') {
+        if (currentParentLable == nullptr)
+        {
+            context->Error("Local lable declaration is outside of any parent lable", result.location, result.length);
+            return false;
+        }
+
+        result.name.insert(result.name.begin(), currentParentLable->name.begin(), currentParentLable->name.end());
+        currentParentLable->childLables.push_back(&result);
+    }
+    else {
+        currentParentLable = &result;
+    }
+
+    context->GetSymbolTable().AddSymbol(Symbol(&result));
 
     return true;
 }
