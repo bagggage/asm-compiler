@@ -5,6 +5,8 @@
 #include <future>
 #include <thread>
 
+#include "cli/cli-handler.h"
+
 #include "syntax/expressions.h"
 #include "syntax/lexer.h"
 #include "syntax/parser.h"
@@ -166,8 +168,10 @@ void printExpression(ASM::AST::Expression* expression, bool inDepth = false, boo
         startString.pop_back();
 }
 
-int main(int argc, char** argv)
+int main(int argc, const char** argv)
 {
+    //ASM::CLI::CommandLineInterfaceHandler cliHandler(argc, argv);
+
     std::ifstream file;
 
     if (argc > 1)
@@ -244,7 +248,7 @@ int main(int argc, char** argv)
     {
         std::cout << "\033[1;31m[Build failed]\033[1;0m Number of errors:\033[0m " << errorsCount << std::endl; 
 
-        //return 0;
+        return 0;
     }
 
     std::cout << std::endl; 
@@ -267,7 +271,7 @@ int main(int argc, char** argv)
 
     std::cout << std::endl;
 
-    //return 0;
+    return 0;
 
     std::cout << "[AST Interpretation]:" << std::endl;
 
