@@ -432,16 +432,6 @@ MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
     return std::move(result);
 }
 
-//bool DuplicateStmt::IsDependent() const
-//{
-//    return valueExpression->IsDependent() && countExpression->IsDependent();
-//}
-//
-//bool DuplicateStmt::Simplify()
-//{
-//    return valueExpression->Simplify() || countExpression->Simplify();
-//}
-
 MachineCode OrgStmt::CodeGen(Codegen::CodeGenerator& generator) const
 {
     MachineCode result;
