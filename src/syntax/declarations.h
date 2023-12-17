@@ -16,21 +16,6 @@ namespace ASM::AST
 {
     struct Declaration : public Node {};
 
-    struct OrgDecl : public Declaration
-    {
-    private:
-        std::unique_ptr<Expression> expression;
-
-        friend class ASM::Parser;
-    public:
-        OrgDecl(Expression* expression);
-
-        inline Expression& GetExpression() { return *expression.get(); }
-        inline const Expression& GetExpression() const { return *expression.get(); }
-
-        inline int64_t GetValue() const { return expression->Resolve(); }
-    };
-
     struct NamedDecl : public Declaration
     {
     protected:
@@ -87,6 +72,8 @@ namespace ASM::AST
         const SectionDecl* relatedSection = nullptr;
         size_t sectionStmtOffset = 0;
 
+        std::vector<LableDecl*> childLables;
+
         friend class ASM::Parser;
     public:
         LableDecl(const std::string& name, const SectionDecl* relatedSection, size_t stmtOffset = 0)
@@ -94,6 +81,9 @@ namespace ASM::AST
 
         inline const SectionDecl* GetRelatedSection() const { return relatedSection; }
         inline size_t GetSectionStmtOffset() const { return sectionStmtOffset; }
+
+        //childName - name in format ".<child>" or just "<child>" without parent lable name
+        bool HasChildLable(const std::string& childName);
     };
 
     struct SectionDecl : public NamedDecl

@@ -305,7 +305,7 @@ bool DuplicateExpr::IsDependent() const
 
 bool DuplicateExpr::Simplify()
 {
-    return true;
+    return valueExpression->Simplify() || countExpression->Simplify();
 }
 
 std::vector<const std::string*> DuplicateExpr::GetDependecies() const
