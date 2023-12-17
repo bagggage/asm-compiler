@@ -93,6 +93,19 @@ void Linker::LinkRawBinary(RawBinary& result) {
 
         for (auto& linkingTarget : segment.second.GetLinkingTargets())
         {
+            auto dependencies = linkingTarget.GetExpression()->GetDependecies();
+            bool isValid = true;
+
+            for (auto depencency : dependencies)
+                if (symbolMap.count(*depencency) == 0) {
+                    isValid = false;
+                    context->Error("Undefined symbol", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+                    break;
+                }
+
+            if (isValid == false) [[unlikely]]
+                continue;
+
             int64_t value = linkingTarget.GetExpression()->Resolve(symbolMap);
 
             if (linkingTarget.GetKind() == LinkingTarget::Kind::RelativeAddress)
