@@ -1,5 +1,8 @@
 #include "linker.h"
 
+#include <cmath>
+#include <limits>
+
 #include "raw-binary.h"
 
 using namespace ASM;
@@ -106,10 +109,14 @@ void Linker::LinkRawBinary(RawBinary& result) {
             if (isValid == false) [[unlikely]]
                 continue;
 
+            uint64_t maxValueForCurrentSize = std::pow(std::numeric_limits<uint8_t>::max(), linkingTarget.GetSize());
             int64_t value = linkingTarget.GetExpression()->Resolve(symbolMap);
 
             if (linkingTarget.GetKind() == LinkingTarget::Kind::RelativeAddress)
-                value -= (linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex);
+                value -= (context->GetSymbolTable().GetOrigin() + linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex);
+
+            if ((value < 0 ? -value : value) > maxValueForCurrentSize)
+                context->Error("Value overflow while linking", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
 
             uint8_t* valuePtr = reinterpret_cast<uint8_t*>(&value);
             
