@@ -150,10 +150,19 @@ namespace ASM::AST
     {
     private:
         static void MakeRmRegsCombination(std::vector<Arch::RegisterIdentifier>& combination, Expression* Expression);
+
+        std::unique_ptr<RegisterExpr> segOverride;
+        //in bytes
+        uint8_t sizeOverride = 0;
+
+        friend class ASM::Parser;
     public:
         MemoryExpr(Expression* child) : ParenExpr(child) {}
 
         std::vector<Arch::RegisterIdentifier> GetRmRegsCombination() const;
+
+        inline RegisterExpr* GetSegOverride() const { return segOverride.get(); }
+        inline uint8_t GetSizeOverride() const { return sizeOverride; }
     };
 
     struct SymbolExpr : public Expression

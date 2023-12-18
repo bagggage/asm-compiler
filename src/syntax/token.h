@@ -55,6 +55,7 @@ namespace ASM
             num_constant,
             reg,
 
+            //keywords [kw_global, l_square)
             kw_global,
             kw_extern,
             kw_org,
@@ -64,7 +65,13 @@ namespace ASM
             kw_align,
             kw_dup,
             kw_equ,
+            kw_ptr,
+            kw_byte,
+            kw_word,
+            kw_dword,
+            kw_qword,
 
+            //
             l_square,
             r_square,
             l_paren,
@@ -72,8 +79,11 @@ namespace ASM
             comma,
             colon,
 
+            //unary operators [minus, tilda]
             minus,
             tilda,
+
+            //binary operators [plus, greatgreat]
             plus,
             slash,
             star,
@@ -83,6 +93,7 @@ namespace ASM
             lessless,
             greatgreat,
 
+            //
             question,
             at,
             dolar,

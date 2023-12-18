@@ -143,7 +143,7 @@ AbstractSyntaxTree Parser::Parse()
                 }
                 else if (nextTokSameLine && nextTok.Is(TokKind::kw_equ))   
                 {   
-                    if (hasMnemonicWithSuchName)    
+                    if (hasMnemonicWithSuchName)
                         context->Warn("Constant has the same name as mnemonic", token->GetLocation(), token->GetLength( ));
 
                     result.push_back(std::make_unique<ConstantDecl>("", nullptr));
@@ -317,37 +317,99 @@ bool Parser::ParsePrimary(Expression*& result)
 
 bool Parser::ParseExpression(Expression*& result)
 {
-    Token& firstToken = tokenStream.front();
+    Token* firstToken = &tokenStream.front();
 
-    switch (firstToken.GetKind())
+    //used only when parsing memory expression
+    uint8_t memExprSizeOverride = 0;
+    RegisterExpr* memExprSegOverride = nullptr;
+
+    switch (firstToken->GetKind())
     {
     case Token::Kind::reg:
     {
-        result = new RegisterExpr(firstToken.GetAsNum()->GetRegId());
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+    parse_reg_expr:
+        result = new RegisterExpr(firstToken->GetAsNum()->GetRegId());
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
+
+        Token& next = LookAhead();
+
+        if (next.IsSameLine(*firstToken) && next.Is(TokKind::colon) &&
+            result->GetAs<RegisterExpr>()->GetGroup() == Arch::RegisterGroup::Segment)
+        {
+            memExprSegOverride = result->GetAs<RegisterExpr>();
+
+            //Skip colon
+            NextToken();
+            firstToken = &NextToken();
+
+            if (firstToken->Is(TokKind::l_square) == false) [[unlikely]]
+            {
+                context->Error("Memory expression expected after segment register override", result->location);
+                delete result;
+
+                return false;
+            }
+
+            goto parse_mem_expr;
+        }
 
         break;
     }
     case Token::Kind::num_constant: case Token::Kind::char_constant:
     {
-        result = new NumberExpr(firstToken.GetAsNum()->GetValue());
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+        result = new NumberExpr(firstToken->GetAsNum()->GetValue());
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
 
         break;
     }
+    case Token::Kind::kw_byte:
+    case Token::Kind::kw_word:
+    case Token::Kind::kw_dword:
+    case Token::Kind::kw_qword:
+    {
+        memExprSizeOverride = 1 << (static_cast<uint8_t>(firstToken->GetKind()) - static_cast<uint8_t>(TokKind::kw_byte));
+
+        Token& next = LookAhead();
+
+        if (next.Is(TokKind::kw_ptr))
+            //Skip ptr keyword
+            NextToken();
+
+        firstToken = &NextToken();
+
+        if (firstToken->Is(TokKind::reg) && LookAhead().Is(TokKind::colon))
+        {
+            goto parse_reg_expr;
+        }
+        else if (firstToken->Is(TokKind::l_square) == false)
+        {
+            context->Error("Expecting memory expression after pointer size is determined", firstToken->GetLocation());
+            return false;
+        }
+    }
     case Token::Kind::l_square: case Token::Kind::l_paren:
     {
-        if (firstToken.Is(Token::Kind::l_square))
-            result = new MemoryExpr(nullptr);
+    parse_mem_expr:
+        if (firstToken->Is(Token::Kind::l_square))
+        {
+            MemoryExpr* memoryExpr = new MemoryExpr(nullptr);
+            result = memoryExpr;
+
+            if (memExprSizeOverride != 0)
+                memoryExpr->sizeOverride = memExprSizeOverride;
+            if (memExprSegOverride != nullptr)
+                memoryExpr->segOverride.reset(memExprSegOverride);
+        }
         else
+        {
             result = new ParenExpr(nullptr);
+        }
 
         if (ParseParenExpr(*reinterpret_cast<ParenExpr*>(result)) == false)
         {
             delete result;
-
             return false;
         }
 
@@ -355,15 +417,17 @@ bool Parser::ParseExpression(Expression*& result)
     }
     case Token::Kind::identifier:
     {
-        result = new SymbolExpr(firstToken.GetAsString()->GetValue());
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+        result = new SymbolExpr(firstToken->GetAsString()->GetValue());
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
 
         if (result->GetAs<SymbolExpr>()->name[0] == '.')
         {
             if (currentParentLable == nullptr)
             {
                 context->Error("Using local lable symbol ouside of any parent lable", result->location, result->length);
+                delete result;
+
                 return false;
             }
 
@@ -375,9 +439,9 @@ bool Parser::ParseExpression(Expression*& result)
     }
     case Token::Kind::string_literal:
     {
-        result = new LiteralExpr(firstToken.GetAsString()->GetValue());
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+        result = new LiteralExpr(firstToken->GetAsString()->GetValue());
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
         break;
     }
     case Token::Kind::at:
@@ -387,7 +451,6 @@ bool Parser::ParseExpression(Expression*& result)
         if (tokenStream.front().Is(Token::Kind::identifier) == false)
         {
             context->Error("Unexpected token, segment name expected after \'@\'", tokenStream.front().GetLocation(), tokenStream.front().GetLength());
-
             return false;
         }
 
@@ -400,37 +463,36 @@ bool Parser::ParseExpression(Expression*& result)
     }
     case Token::Kind::dolar: case Token::Kind::dolardolar:
     {
-        result = new SymbolExpr((firstToken.Is(Token::Kind::dolar) ? "$" : "$$"));
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+        result = new SymbolExpr((firstToken->Is(Token::Kind::dolar) ? "$" : "$$"));
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
 
         break;
     }
     case Token::Kind::question:
     {
         result = new SymbolExpr("?");
-        result->location = firstToken.GetLocation();
-        result->length = firstToken.GetLength();
+        result->location = firstToken->GetLocation();
+        result->length = firstToken->GetLength();
 
         break;
     }
     default:
     {
-        if (firstToken.IsUnaryOperator())
+        if (firstToken->IsUnaryOperator())
         {
             result = new UnaryExpr();
 
             if (ParseUnaryExpr(*reinterpret_cast<UnaryExpr*>(result)) == false)
             {
                 delete result;
-
                 return false;
             }
 
             break;
         }
 
-        context->Error("Invalid syntax", firstToken.GetLocation(), firstToken.GetLength());
+        context->Error("Invalid syntax", firstToken->GetLocation(), firstToken->GetLength());
 
         return false;
         break;

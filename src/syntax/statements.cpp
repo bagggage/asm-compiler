@@ -75,6 +75,12 @@ void InstructionStmt::EncodeModRM(ModRM modrm, const std::unique_ptr<Expression>
             return;
         }
 
+        if (memoryExpr->GetSegOverride() != nullptr)
+        {
+            InstructionPrefix segOverridePrefix = Arch8086::SregToSegOverride.at(memoryExpr->GetSegOverride()->GetIdentifier());
+            code->insert(code->begin(), { static_cast<uint8_t>(segOverridePrefix) });
+        }
+
         auto regsCombination = memoryExpr->GetRmRegsCombination();
 
         if (regsCombination.empty())
@@ -89,6 +95,8 @@ void InstructionStmt::EncodeModRM(ModRM modrm, const std::unique_ptr<Expression>
                     generator.MakeAbsoluteLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize);
                 else
                     generator.MakeValueLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize, LinkingTarget::Type::Integer);
+
+                dispSize = maxModRm16DisplacementSize;
             }
             else
             {
@@ -111,6 +119,8 @@ void InstructionStmt::EncodeModRM(ModRM modrm, const std::unique_ptr<Expression>
                     generator.MakeAbsoluteLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize);
                 else
                     generator.MakeValueLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize, LinkingTarget::Type::Integer);
+
+                dispSize = maxModRm16DisplacementSize;
             }
             else
             {
@@ -217,6 +227,9 @@ MachineCode InstructionStmt::CodeGen(CodeGenerator& generator) const
     case OpEn::MI:
     {
         //Memory - Imm
+
+        if (operands[0]->Is<MemoryExpr>() && operands[0]->GetAs<MemoryExpr>()->GetSizeOverride() == 0)
+            generator.GetContext().Error("Undefined pointer size", operands[0]->GetLocation(), operands[0]->GetLength());
 
         ModRM modrm;
         modrm.reg = static_cast<Register>(instructionPrototype->opcodeExtention);

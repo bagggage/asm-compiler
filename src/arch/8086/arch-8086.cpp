@@ -597,3 +597,13 @@ const std::unordered_map<std::vector<RegisterIdentifier>, RM> Arch8086::RmRegsCo
     {{RegisterIdentifier::BX}, RM::BX },
     {{}, RM::DISP_16}
 };
+
+const std::unordered_map<RegisterIdentifier, InstructionPrefix> Arch8086::SregToSegOverride =
+{
+    { RegisterIdentifier::CS, InstructionPrefix::CS },
+    { RegisterIdentifier::ES, InstructionPrefix::ES },
+    { RegisterIdentifier::DS, InstructionPrefix::DS },
+    { RegisterIdentifier::SS, InstructionPrefix::SS },
+    { RegisterIdentifier::GS, InstructionPrefix::GS },
+    { RegisterIdentifier::FS, InstructionPrefix::FS },
+};

@@ -40,6 +40,11 @@ const std::unordered_map<std::string, TokKind> Lexer::KeywordsToKind =
     KW_TO_KIND("ALIGN",   align),
     KW_TO_KIND("DUP",     dup),
     KW_TO_KIND("EQU",     equ),
+    KW_TO_KIND("PTR",     ptr),
+    KW_TO_KIND("BYTE",    byte),
+    KW_TO_KIND("WORD",    word),
+    KW_TO_KIND("DWORD",   dword),
+    KW_TO_KIND("QWORD",   qword)
 };
 
 const std::unordered_map<std::string, Arch::RegisterIdentifier> Lexer::IdentifierToRegId = 
