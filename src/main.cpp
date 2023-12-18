@@ -153,6 +153,9 @@ void printExpression(ASM::AST::Expression* expression, bool inDepth = false, boo
     {
         std::cout << "\033[1mmemory\033[0m" << std::endl;
 
+        if (expression->GetAs<ASM::AST::MemoryExpr>()->GetSegOverride() != nullptr)
+            printExpression(reinterpret_cast<ASM::AST::MemoryExpr*>(expression)->GetSegOverride(), true, false);
+
         printExpression(reinterpret_cast<ASM::AST::MemoryExpr*>(expression)->GetExpression(), true);
     }
     else if (expression->Is<ASM::AST::ParenExpr>())
@@ -211,10 +214,10 @@ int main(int argc, const char** argv)
     ASM::Codegen::CodeGenerator codeGenerator(context);
 
     ASM::TranslationUnit& unit = codeGenerator.ProccessAST(tree);
-    ASM::Codegen::MachineCode& code = unit.GetSectionMap().begin()->second.GetCode();
     ASM::Linker linker(context);
-
     auto assembledObject = linker.Link(ASM::LinkingFormat::RawBinary);
+
+    ASM::Codegen::MachineCode& code = reinterpret_cast<ASM::RawBinary*>(assembledObject.get())->GetCode();//unit.GetSectionMap().begin()->second.GetCode();
 
     std::ofstream out("test.com");
     assembledObject->Serialize(out);
@@ -253,6 +256,8 @@ int main(int argc, const char** argv)
 
     std::cout << std::endl; 
 
+    return 0;
+
     for (auto& section : unit.GetSectionMap())
     {
         std::cout << "Section: " << section.first << std::endl;
@@ -271,7 +276,7 @@ int main(int argc, const char** argv)
 
     std::cout << std::endl;
 
-    return 0;
+    //return 0;
 
     std::cout << "[AST Interpretation]:" << std::endl;
 

@@ -1,7 +1,7 @@
 CXX=g++
 CXX_WIN=x86_64-w64-mingw32-g++-win32
-CPPFLAGS=-g -flto -O2 -std=c++20 -I$(SRC) -D DEBUG
-LDFLAGS=-g -flto -O2
+CPPFLAGS=-g -flto -O0 -std=c++20 -I$(SRC) -D DEBUG
+LDFLAGS=-g -flto -O0
 RM=rm -f
 SRC=src
 BUILD=build
