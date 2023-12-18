@@ -160,6 +160,8 @@ SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const In
 
             if (operand->GetAs<MemoryExpr>()->GetRmRegsCombination().empty())
                 types.push_back(Arch::OpType::moffs);
+
+            evaluation.minRequiredSize = operand->GetAs<MemoryExpr>()->GetSizeOverride() * 8;
         }
         else
         {
@@ -217,8 +219,15 @@ const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::s
             //Check if operands size matches
             if (operandPrototype.size != 0 && (
                     operandPrototype.size < evaluatedOperand.minRequiredSize ||
-                    evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Register) &&
-                    evaluatedOperand.minRequiredSize != operandPrototype.size
+                    (
+                        (
+                            evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Register) ||
+                            (evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Memory) && 
+                            evaluatedOperand.minRequiredSize != 0)
+                        )
+                        &&
+                        evaluatedOperand.minRequiredSize != operandPrototype.size
+                    )
                 ))
             { currentPriority = 0; break; }
 
