@@ -25,7 +25,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0x04}, OpEn::I,  {{OpType::AL},     {OpType::imm, 8}}},
             {{0x05}, OpEn::I,  {{OpType::AX},     {OpType::imm, 16}}},
             {{0x80}, OpEn::MI, {{OpType::rm, 8},  {OpType::imm, 8}},  '\0'},
-            {{0x83}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\0'},
+            {{0x83}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\0', SpecialFeature::SignExtended},
             {{0x81}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 16}}, '\0'},
             {{0x00}, OpEn::MR, {{OpType::rm, 8},  {OpType::r,   8}}},
             {{0x01}, OpEn::MR, {{OpType::rm, 16}, {OpType::r,   16}}},
@@ -40,7 +40,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
             {{0x25}, OpEn::I,  {{OpType::AX},     {OpType::imm, 16}}},
             {{0x80}, OpEn::MI, {{OpType::rm, 8},  {OpType::imm, 8}},  '\4'},
             {{0x81}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 16}}, '\4'},
-            {{0x83}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\4'},
+            {{0x83}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\4', SpecialFeature::SignExtended},
             {{0x20}, OpEn::MR, {{OpType::rm, 8},  {OpType::r,   8}}},
             {{0x21}, OpEn::MR, {{OpType::rm, 16}, {OpType::r,   16}}},
             {{0x22}, OpEn::RM, {{OpType::r,  8},  {OpType::rm,  8}}},
@@ -364,7 +364,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
         {
             {{0xEB}, OpEn::D, {{OpType::rel, 8}}},
             {{0xE9}, OpEn::D, {{OpType::rel, 16}}},
-            {{0xFF}, OpEn::D, {{OpType::rm,  16}}, '\4'},
+            {{0xFF}, OpEn::M, {{OpType::rm,  16}}, '\4'},
             {{0xEA}, OpEn::S, {{OpType::ptr, 16}}},
             {{0xFF}, OpEn::M, {{OpType::rm,  16}}, '\5'}   
         }
@@ -431,10 +431,10 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
     {
         "OUT",
         {
-            {{0xE6}, OpEn::I, {{OpType::imm, 8}, {OpType::AL}}},
-            {{0xE7}, OpEn::I, {{OpType::imm, 8}, {OpType::AX}}},
-            {{0xEE}, OpEn::I, {{OpType::DX},     {OpType::AL}}},
-            {{0xEF}, OpEn::I, {{OpType::DX},     {OpType::AX}}}
+            {{0xE6}, OpEn::I,  {{OpType::imm, 8}, {OpType::AL}}},
+            {{0xE7}, OpEn::I,  {{OpType::imm, 8}, {OpType::AX}}},
+            {{0xEE}, OpEn::ZO, {{OpType::DX},     {OpType::AL}}},
+            {{0xEF}, OpEn::ZO, {{OpType::DX},     {OpType::AX}}}
         }
     },
     {
@@ -503,7 +503,7 @@ const std::unordered_map<std::string, std::vector<Instruction>> Arch8086::Instru
         {
             {{0xD0}, OpEn::M1, {{OpType::rm, 8},  {OpType::ONE}},     '\4'},
             {{0xD2}, OpEn::MC, {{OpType::rm, 8},  {OpType::CL}},      '\4'},
-            {{0xC0}, OpEn::MC, {{OpType::rm, 8},  {OpType::imm, 8}},  '\4'},
+            {{0xC0}, OpEn::MI, {{OpType::rm, 8},  {OpType::imm, 8}},  '\4'},
             {{0xD1}, OpEn::M1, {{OpType::rm, 16}, {OpType::ONE}},     '\4'},
             {{0xD3}, OpEn::MC, {{OpType::rm, 16}, {OpType::CL}},      '\4'},
             {{0xC1}, OpEn::MI, {{OpType::rm, 16}, {OpType::imm, 8}},  '\4'}
@@ -607,3 +607,22 @@ const std::unordered_map<RegisterIdentifier, InstructionPrefix> Arch8086::SregTo
     { RegisterIdentifier::GS, InstructionPrefix::GS },
     { RegisterIdentifier::FS, InstructionPrefix::FS },
 };
+
+size_t Instruction::GetMaxByteSize() const
+{
+    size_t result = opcode.size();
+    
+    switch (opencode)
+    {
+    case OpEn::RM: case OpEn::MR: case OpEn::M: case OpEn::M1: case OpEn::MC:
+        result += 1 + 2; break;
+    case OpEn::RMI:
+        result += 1 + 2 + 2; break;
+    case OpEn::MI:
+        result += 1 + 2 + 2; break;
+    case OpEn::I: case OpEn::D: case OpEn::TD: case OpEn::FD: case OpEn::OI:
+        result += 2; break;
+    }
+
+    return result;
+}
