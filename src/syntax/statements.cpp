@@ -82,53 +82,52 @@ void InstructionStmt::EncodeModRM(ModRM modrm, const std::unique_ptr<Expression>
         }
 
         auto regsCombination = memoryExpr->GetRmRegsCombination();
+        auto dispValue = generator.ResolveExpression(memoryExpr->GetExpression());
+
+        displacement = dispValue.value_or(0);
 
         if (regsCombination.empty())
         {
             modrm.mod = Mod::MEM;
             modrm.rm = RM::DISP_16;
 
+            dispSize = maxModRm16DisplacementSize;
+
             //Disp
-            if (memoryExpr->GetExpression()->IsDependent())
+            if (dispValue.has_value() == false)
             {
                 if (generator.IsExpressionHasAddressSymbol(memoryExpr->GetExpression()))
                     generator.MakeAbsoluteLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize);
                 else
                     generator.MakeValueLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize, LinkingTarget::Type::Integer);
-
-                dispSize = maxModRm16DisplacementSize;
-            }
-            else
-            {
-                displacement = memoryExpr->GetExpression()->Resolve();
-
-                if (displacement != 0)
-                    dispSize = maxModRm16DisplacementSize;
             }
         }
         else
         {
+            modrm.mod = Mod::MEM;
             modrm.rm = Arch8086::RmRegsCombinations.at(regsCombination);
 
             //Disp
-            if (memoryExpr->GetExpression()->IsDependent())
+            if (dispValue.has_value() == false)
             {
                 modrm.mod = Mod::MEM_EX;
+                dispSize = maxModRm16DisplacementSize;
 
                 if (generator.IsExpressionHasAddressSymbol(memoryExpr->GetExpression()))
                     generator.MakeAbsoluteLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize);
                 else
                     generator.MakeValueLinkTarget(memoryExpr->GetExpression(), code->size() + 1, maxModRm16DisplacementSize, LinkingTarget::Type::Integer);
-
-                dispSize = maxModRm16DisplacementSize;
             }
             else
             {
-                displacement = memoryExpr->GetExpression()->Resolve();
-
-                if (displacement != 0)
+                if (displacement != 0 ||
+                    (regsCombination.size() == 1 && regsCombination.back() == RegisterIdentifier::BP))
                 {
                     dispSize = CodeGenerator::EvaluateLiteralByteSize(displacement);
+
+                    if (generator.CheckSignSizeConflict(displacement, dispSize))
+                        dispSize = maxModRm16DisplacementSize;
+
                     modrm.mod = (dispSize == 1 ? Mod::MEM8 : Mod::MEM_EX);
                 }
             }
@@ -184,7 +183,7 @@ void InstructionStmt::EncodeImm(Expression* operand, Operand operandPrototype, C
 MachineCode InstructionStmt::CodeGen(CodeGenerator& generator) const 
 {
     MachineCode result;
-    const Instruction* instructionPrototype = generator.ChooseInstructionByOperands(mnemonic, operands);
+    const Instruction* instructionPrototype = generator.ChooseInstructionByOperands(mnemonic, operands, sectionStmtOffset);
 
     if (instructionPrototype == nullptr)
     {
@@ -273,8 +272,13 @@ MachineCode InstructionStmt::CodeGen(CodeGenerator& generator) const
     {
         //Imm
         //Some instructions use first operand as register, that encoded in opcode, so we should use last operand as imm
+        size_t pos = 0;
 
-        EncodeImm(operands.back().get(), instructionPrototype->operands.back(), generator, result);
+        for (; pos < instructionPrototype->operands.size(); ++pos)
+            if (instructionPrototype->operands[pos].type == OpType::imm)
+                break;
+
+        EncodeImm(operands[pos].get(), instructionPrototype->operands[pos], generator, result);
 
         break;
     }
@@ -350,6 +354,17 @@ void DefineDataStmt::CodeGenDataUnit(Expression* dataUnit, MachineCode& result, 
     }
 }
 
+size_t InstructionStmt::GetMaxStmtByteSize() const
+{
+    size_t result = 1;
+    
+    for (auto& instruction : Arch8086::InstructionSet.at(mnemonic))
+        if (instruction.GetMaxByteSize() > result)
+            result = instruction.GetMaxByteSize();
+
+    return result;
+}
+
 MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
 {
     MachineCode result;
@@ -383,57 +398,69 @@ MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
                 continue;
             }
 
-            if (dupExpr->GetValueExpression()->IsDependent() == false && *count > 1) {
-                size_t unitBeginIdx = result->size();
-                CodeGenDataUnit(dupExpr->GetValueExpression(), result, generator);
-                size_t unitEndIdx = result->size();
+            auto value = generator.ResolveExpression(dupExpr->GetValueExpression());
 
-                result->resize(unitEndIdx + *count - 1);
+            if (value.has_value()) {
+                //size_t unitBeginIdx = result->size();
 
-                switch (dataUnitSize)
-                {
-                case 1:
-                {
-                    std::fill(result->begin() + unitEndIdx, result->end(), result[unitBeginIdx]);
-                    break;
-                }
-                case 2:
-                {
-                    uint16_t* data = reinterpret_cast<uint16_t*>(result->data() + unitEndIdx);
-                    uint16_t value = *reinterpret_cast<uint16_t*>(result->data() + unitBeginIdx);
+                int64_t data = *value;
 
-                    for (size_t i = 0; i < *count - 1; ++i)
-                        data[i] = value;
+                for (size_t i = 0; i < *count; ++i)
+                    result.Push(reinterpret_cast<uint8_t*>(&data), dataUnitSize);
 
-                    break;
-                }
-                case 4:
-                {
-                    uint32_t* data = reinterpret_cast<uint32_t*>(result->data() + unitEndIdx);
-                    uint32_t value = *reinterpret_cast<uint32_t*>(result->data() + unitBeginIdx);
+                //size_t unitEndIdx = result->size();
 
-                    for (size_t i = 0; i < *count - 1; ++i)
-                        data[i] = value;
-
-                    break;
-                }
-                case 8:
-                {
-                    uint64_t* data = reinterpret_cast<uint64_t*>(result->data() + unitEndIdx);
-                    uint64_t value = *reinterpret_cast<uint64_t*>(result->data() + unitBeginIdx);
-
-                    for (size_t i = 0; i < *count - 1; ++i)
-                        data[i] = value;
-
-                    break;
-                }
-                default:
-                    assert(false);
-                    break;
-                }
+                //result->resize(unitEndIdx + *count - 1);
+                //
+                //switch (dataUnitSize)
+                //{
+                //case 1:
+                //{
+                //    std::fill(result->begin() + unitEndIdx, result->end(), result[unitBeginIdx]);
+                //    break;
+                //}
+                //case 2:
+                //{
+                //    uint16_t* data = reinterpret_cast<uint16_t*>(result->data() + unitEndIdx);
+                //    uint16_t value = *reinterpret_cast<uint16_t*>(result->data() + unitBeginIdx);
+                //
+                //    for (size_t i = 0; i < *count - 1; ++i)
+                //        data[i] = value;
+                //
+                //    break;
+                //}
+                //case 4:
+                //{
+                //    uint32_t* data = reinterpret_cast<uint32_t*>(result->data() + unitEndIdx);
+                //    uint32_t value = *reinterpret_cast<uint32_t*>(result->data() + unitBeginIdx);
+                //
+                //    for (size_t i = 0; i < *count - 1; ++i)
+                //        data[i] = value;
+                //
+                //    break;
+                //}
+                //case 8:
+                //{
+                //    uint64_t* data = reinterpret_cast<uint64_t*>(result->data() + unitEndIdx);
+                //    uint64_t value = *reinterpret_cast<uint64_t*>(result->data() + unitBeginIdx);
+                //
+                //    for (size_t i = 0; i < *count - 1; ++i)
+                //        data[i] = value;
+                //
+                //    break;
+                //}
+                //default:
+                //    assert(false);
+                //    break;
+                //}
             }
             else {
-                CodeGenDataUnit(dupExpr->GetValueExpression(), result, generator);
+                const uint8_t zero = 0;
+
+                for (size_t i = 0; i < *count; ++i) {
+                    generator.MakeValueLinkTarget(dupExpr->GetValueExpression(), result->size(), dataUnitSize, LinkingTarget::Type::Integer);
+                    result.Push(&zero, dataUnitSize);
+                }
             }
         }
         else
@@ -443,6 +470,33 @@ MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
     }
 
     return std::move(result);
+}
+
+size_t DefineDataStmt::GetMaxStmtByteSize() const
+{
+    size_t result = 0;
+
+    for (auto& unit : units)
+    {
+        if (unit->Is<LiteralExpr>()) {
+            result += unit->GetAs<LiteralExpr>()->value.size() * dataUnitSize;
+        }
+        else if (unit->Is<DuplicateExpr>()) {
+            DuplicateExpr* dupExpr = unit->GetAs<DuplicateExpr>();
+
+            int64_t count = 256;
+
+            if (dupExpr->GetCountExpression()->IsDependent() == false)
+                count = dupExpr->GetCountExpression()->Resolve();
+
+            result += count * dataUnitSize;
+        }
+        else {
+            result += dataUnitSize;
+        }
+    }
+
+    return result;
 }
 
 MachineCode OrgStmt::CodeGen(Codegen::CodeGenerator& generator) const
@@ -499,6 +553,11 @@ MachineCode OffsetStmt::CodeGen(Codegen::CodeGenerator& generator) const
     return result;
 }
 
+size_t OffsetStmt::GetMaxStmtByteSize() const
+{
+    return value->Resolve();
+}
+
 MachineCode AlignStmt::CodeGen(Codegen::CodeGenerator& generator) const
 {
     MachineCode result;
@@ -530,4 +589,9 @@ MachineCode AlignStmt::CodeGen(Codegen::CodeGenerator& generator) const
         result->resize(*align - mod, generator.GetNopInstructionOpcode());
 
     return result;
+}
+
+size_t AlignStmt::GetMaxStmtByteSize() const
+{   
+    return value->Resolve();
 }

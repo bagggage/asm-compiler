@@ -32,17 +32,20 @@ namespace ASM::Codegen
     public:
         CodeGenerator(AssemblyContext& context) : context(&context) {}
 
+        //Size in bytes
+        static bool CheckSignSizeConflict(int64_t value, uint8_t desiredSize);
         static uint8_t EvaluateLiteralByteSize(int64_t value);
         static uint8_t GetOperandTypePriority(Arch::OpType type);
+        static uint8_t GetOpEncodingPriority(Arch::OperandEncoding opencode);
         static Arch::OpType GetDirectEncodingOfRegisterOpType(AST::RegisterExpr* registerExpression);
-        uint8_t EvaluateDependentOperandSize(const AST::Expression* operand) const;
+        uint8_t EvaluateDependentOperandSize(const AST::Expression* operand, int64_t& approximateValue) const;
         SmallVector<Arch::OperandEvaluation, 4> EvaluateOperands(const AST::InstructionStmt::Operands_t& operands) const;
 
         inline static uint8_t GetNopInstructionOpcode() { return Arch::Arch8086::InstructionSet.at("NOP").back().opcode.back(); }
 
         inline AssemblyContext& GetContext() const { return *context; }
 
-        const Arch::Instruction* ChooseInstructionByOperands(const std::string& mnemonic, const AST::InstructionStmt::Operands_t& operands) const;
+        const Arch::Instruction* ChooseInstructionByOperands(const std::string& mnemonic, const AST::InstructionStmt::Operands_t& operands, std::optional<size_t> stmtOffset) const;
         bool IsExpressionHasAddressSymbol(AST::Expression* expression) const;
 
         void MakeAbsoluteLinkTarget(AST::Expression* expression, uint8_t offset, uint8_t size);

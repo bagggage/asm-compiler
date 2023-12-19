@@ -6,18 +6,23 @@ using namespace ASM;
 using namespace ASM::AST;
 using namespace ASM::Codegen;
 
+bool CodeGenerator::CheckSignSizeConflict(int64_t value, uint8_t desiredSize)
+{
+    return value > 0 && (value & (0x80 << (8 * (desiredSize - 1))));
+}
+
 uint8_t CodeGenerator::EvaluateLiteralByteSize(int64_t value)
 {
-    if (value < 0)
-        value *= -1;
+    int64_t temp = (value < 0 ? -value : value);
 
+    //Size in bytes
     uint8_t size = 0;
 
     do
     {
         ++size;
-        value = value >> 8;
-    } while (value != 0);
+        temp = temp >> 8;
+    } while (temp != 0);
 
     return size;
 }
@@ -30,7 +35,7 @@ Arch::OpType CodeGenerator::GetDirectEncodingOfRegisterOpType(RegisterExpr* regi
         {
         case Arch::RegisterIdentifier::AL: return Arch::OpType::AL;
             break;
-        case Arch::RegisterIdentifier::AH: return Arch::OpType::AL;
+        case Arch::RegisterIdentifier::AH: return Arch::OpType::none;
             break;
         case Arch::RegisterIdentifier::AX: return Arch::OpType::AX;
             break;
@@ -70,13 +75,21 @@ Arch::OpType CodeGenerator::GetDirectEncodingOfRegisterOpType(RegisterExpr* regi
 
 uint8_t CodeGenerator::GetOperandTypePriority(Arch::OpType type)
 {
-    if (type >= Arch::OpType::AL && type <= Arch::OpType::GS || type == Arch::OpType::ONE)
+    if (type >= Arch::OpType::AL && type <= Arch::OpType::GS || type == Arch::OpType::ONE || type == Arch::OpType::sreg || type == Arch::OpType::creg)
         return highPriority;
 
     return lowPriority;
 }
 
-uint8_t CodeGenerator::EvaluateDependentOperandSize(const AST::Expression* operand) const 
+uint8_t CodeGenerator::GetOpEncodingPriority(Arch::OperandEncoding opencode)
+{
+    if (opencode == Arch::OperandEncoding::ZO || opencode == Arch::OperandEncoding::O)
+        return highPriority;
+
+    return lowPriority;
+}
+
+uint8_t CodeGenerator::EvaluateDependentOperandSize(const AST::Expression* operand, int64_t& approximateValue) const 
 {
     constexpr uint8_t maxBitsSize = 16;
     auto dependencies = operand->GetDependecies();
@@ -99,8 +112,7 @@ uint8_t CodeGenerator::EvaluateDependentOperandSize(const AST::Expression* opera
             if (currentSection != &context->GetTranslationUnit().GetOrMakeSection(lableDecl->GetRelatedSection()->GetName()))
                 return maxBitsSize;
 
-            constexpr const int64_t averageStmtSize = 3;
-            int64_t evaluation = lableDecl->GetSectionStmtOffset() * averageStmtSize;
+            symbolMap.insert({ *depenency, lableDecl->GetSectionStmtOffset() });
         }
         else if (symbol.GetDeclaration().Is<ConstantDecl>()) {
             const Expression* expression = &symbol.GetDeclaration().GetAs<ConstantDecl>()->GetExpression();
@@ -112,9 +124,10 @@ uint8_t CodeGenerator::EvaluateDependentOperandSize(const AST::Expression* opera
         }
     }
 
-    int64_t value = operand->Resolve(symbolMap);
+    approximateValue = operand->Resolve(symbolMap);
+    uint8_t result = EvaluateLiteralByteSize(approximateValue) * 8;
 
-    return EvaluateLiteralByteSize(value) * 8;
+    return (result > maxBitsSize ? maxBitsSize : result);
 }
 
 SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const InstructionStmt::Operands_t& operands) const
@@ -170,14 +183,20 @@ SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const In
 
             if (value.has_value())
             {
+                evaluation.approximateValue = *value;
                 evaluation.minRequiredSize = EvaluateLiteralByteSize(*value) * 8;
 
                 if (*value == 1)
                     types.push_back(Arch::OpType::ONE);
+
+                if (*value < 0)
+                    evaluation.sign = Arch::OperandEvaluation::Sign::Signed;
+                else if (CheckSignSizeConflict(*value, evaluation.minRequiredSize / 8))
+                    evaluation.sign = Arch::OperandEvaluation::Sign::Unsigned;
             }
             else
             {
-                evaluation.minRequiredSize = EvaluateDependentOperandSize(operand.get());
+                evaluation.minRequiredSize = EvaluateDependentOperandSize(operand.get(), evaluation.approximateValue);
             }
 
             types.push_back(Arch::OpType::imm);
@@ -195,12 +214,16 @@ void CodeGenerator::ChangeCurrentSection(const std::string& sectionName)
     currentSectionCode = &currentSection->GetCode();
 }
 
-const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::string& mnemonic, const InstructionStmt::Operands_t& operands) const
+const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::string& mnemonic, const InstructionStmt::Operands_t& operands, std::optional<size_t> stmtOffset) const
 {
     auto& instructions = context->GetInstructionSet().at(mnemonic);
 
     const Arch::Instruction* mostAppropriateInstruction = nullptr;
-    uint8_t priority = 0;
+    int8_t priority = 0;
+
+    if (operands.empty() == false)
+        if (operands.back()->GetLocation().line == 1415)
+            std::cout << '!' << std::endl;
 
     auto evaluatedOperands = EvaluateOperands(operands);
 
@@ -209,27 +232,12 @@ const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::s
         if (evaluatedOperands.size() != instruction.operands.size())
             continue;
 
-        uint8_t currentPriority = evaluatedOperands.size() == 0 ? 1 : 0;
+        int8_t currentPriority = evaluatedOperands.size() == 0 ? 1 : 0;
 
         for (int i = 0; i < instruction.operands.size(); ++i)
         {
             auto& operandPrototype = instruction.operands[i];
             auto& evaluatedOperand = evaluatedOperands[i];
-
-            //Check if operands size matches
-            if (operandPrototype.size != 0 && (
-                    operandPrototype.size < evaluatedOperand.minRequiredSize ||
-                    (
-                        (
-                            evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Register) ||
-                            (evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Memory) && 
-                            evaluatedOperand.minRequiredSize != 0)
-                        )
-                        &&
-                        evaluatedOperand.minRequiredSize != operandPrototype.size
-                    )
-                ))
-            { currentPriority = 0; break; }
 
             //Check if operand types suitable 
             if (std::find
@@ -240,12 +248,54 @@ const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::s
                 ) == evaluatedOperand.expectedTypes.end())
             { currentPriority = 0; break; }
 
-            currentPriority += GetOperandTypePriority(operandPrototype.type);
+            if (operandPrototype.type == Arch::OpType::rel && stmtOffset.has_value() && evaluatedOperand.approximateValue != 0) [[unlikely]]
+            {
+                int64_t offset = evaluatedOperand.approximateValue - static_cast<int64_t>(*stmtOffset);
+                
+                if (instructions.size() > 1 && (offset > 127 || offset < -128) &&
+                    operandPrototype.size < 16)
+                    { currentPriority = 0; break; }
 
-            if (operandPrototype.size != 0 &&
-                operandPrototype.size == evaluatedOperand.minRequiredSize)
-                ++currentPriority;
+                currentPriority += 2;
+            }
+            else 
+            {
+                //Check if operands size matches
+                if (operandPrototype.size != 0 && (
+                        operandPrototype.size < evaluatedOperand.minRequiredSize ||
+                        (
+                            (
+                                evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Register) ||
+                                (evaluatedOperand.Is(Arch::OperandEvaluation::Kind::Memory) && 
+                                evaluatedOperand.minRequiredSize != 0)
+                            )
+                            &&
+                            evaluatedOperand.minRequiredSize != operandPrototype.size
+                        )
+                    ))
+                { currentPriority = 0; break; }
+
+                if (instruction.feature == Arch::SpecialFeature::SignExtended) [[unlikely]]
+                {
+                    if (evaluatedOperand.sign == Arch::OperandEvaluation::Sign::Signed)
+                        ++currentPriority;
+                    else if (evaluatedOperand.sign == Arch::OperandEvaluation::Sign::Unsigned)
+                        currentPriority -= evaluatedOperand.minRequiredSize;
+                    else if (evaluatedOperand.kind == Arch::OperandEvaluation::Kind::Immediate &&
+                            operandPrototype.size == 1)
+                        { currentPriority = 0; break; }
+                }
+
+                if (operandPrototype.size != 0 &&
+                    operandPrototype.size == evaluatedOperand.minRequiredSize)
+                    ++currentPriority;
+            }
+
+            currentPriority += GetOperandTypePriority(operandPrototype.type);
         }
+
+        if (currentPriority > 0)
+            currentPriority += GetOpEncodingPriority(instruction.opencode);
 
         if (currentPriority > priority)
         {
@@ -336,11 +386,14 @@ bool CodeGenerator::ResolveExpressionDependencies(
     auto dependencies = expression->GetDependecies();
 
     if (dependencies.empty() == false) {
-        for (auto depenency : dependencies) {
-            if (context->GetSymbolTable().HasSymbol(*depenency) == false)
+        for (auto dependency : dependencies) {
+            if (symbolMap.count(*dependency) > 0)
+                continue;
+
+            if (context->GetSymbolTable().HasSymbol(*dependency) == false)
                 return false;
 
-            const SymbolDecl& declaration = context->GetSymbolTable().GetSymbol(*depenency).GetDeclaration();
+            const SymbolDecl& declaration = context->GetSymbolTable().GetSymbol(*dependency).GetDeclaration();
 
             if (declaration.Is<ConstantDecl>() == false)
                 return false;
@@ -349,7 +402,7 @@ bool CodeGenerator::ResolveExpressionDependencies(
                 return false;
         }
     }
-    else if (symbolName.empty() == false && symbolMap.count(symbolName) == 0) {
+    if (symbolName.empty() == false && symbolMap.count(symbolName) == 0) {
         symbolMap.insert({ symbolName, expression->Resolve(symbolMap) });
     }
 

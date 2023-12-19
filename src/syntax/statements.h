@@ -23,6 +23,7 @@ namespace ASM::AST
     {
     public:
         virtual Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const = 0;
+        virtual size_t GetMaxStmtByteSize() const { return 0; }
     };
 
     struct InstructionStmt : public Statement
@@ -33,6 +34,8 @@ namespace ASM::AST
 
         std::string mnemonic;
         std::vector<std::unique_ptr<Expression>> operands;
+
+        size_t sectionStmtOffset = 0;
 
         friend class ASM::Parser;
 
@@ -58,6 +61,7 @@ namespace ASM::AST
         inline std::vector<std::unique_ptr<Expression>>& GetOperands() { return operands; }
 
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+        size_t GetMaxStmtByteSize() const override;
     };
 
     struct DefineDataStmt : public Statement
@@ -75,6 +79,7 @@ namespace ASM::AST
         inline std::vector<std::unique_ptr<Expression>>& GetUnits() { return units; }
 
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+        size_t GetMaxStmtByteSize() const override;
     };
 
     struct ParametricStmt : public Statement
@@ -95,12 +100,14 @@ namespace ASM::AST
     {
     public:
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+        size_t GetMaxStmtByteSize() const override;
     };
 
     struct AlignStmt : public ParametricStmt
     {
     public:
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+        size_t GetMaxStmtByteSize() const override;
     };
 }
 

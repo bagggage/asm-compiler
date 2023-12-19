@@ -64,15 +64,33 @@ namespace ASM::Arch
             Memory
         };
 
+        enum class Sign : uint8_t
+        {
+            none,
+
+            Unsigned,
+            Signed
+        };
+
         OperandEvaluation() = default;
         OperandEvaluation(Kind kind) : kind(kind) {}
 
         Kind kind;
 
         SmallVector<OpType, 4> expectedTypes;
+        int64_t approximateValue = 0;
         uint8_t minRequiredSize = 0;
 
+        Sign sign;
+
         inline bool Is(Kind expectedKind) const { return kind == expectedKind; }
+    };
+
+    enum class SpecialFeature : uint8_t
+    {
+        none,
+
+        SignExtended
     };
 
     struct Instruction
@@ -84,12 +102,14 @@ namespace ASM::Arch
             const std::initializer_list<uint8_t> opcodes,
             const OperandEncoding operandEncoding,
             const std::initializer_list<Operand> operands,
-            uint8_t opcodeExtention = opcodeExtentionNone
+            uint8_t opcodeExtention = opcodeExtentionNone,
+            SpecialFeature feature = SpecialFeature::none
         )
             : opencode(operandEncoding),
             opcode(opcodes),
             operands(operands),
-            opcodeExtention(opcodeExtention)
+            opcodeExtention(opcodeExtention),
+            feature(feature)
         {}
 
         static constexpr const uint8_t opcodeExtentionNone = 0xff;
@@ -97,8 +117,12 @@ namespace ASM::Arch
         SmallVector<uint8_t, 3> opcode;
         uint8_t opcodeExtention = opcodeExtentionNone;
 
+        SpecialFeature feature = SpecialFeature::none;
+
         OperandEncoding opencode = OperandEncoding::ZO;
         SmallVector<Operand, 4> operands;
+
+        size_t GetMaxByteSize() const;
     };
 }
 
