@@ -236,6 +236,8 @@ AbstractSyntaxTree Parser::Parse()
 
         if (!success && isChanged)
             result.pop_back();
+        else if (result.back()->Is<Statement>())
+            currentStmtOffset += result.back()->GetAs<Statement>()->GetMaxStmtByteSize();
 
         token = &NextToken();
     }
@@ -774,6 +776,7 @@ bool Parser::ParseInstructionStmt(InstructionStmt& result)
         next = &LookAhead();
     }
 
+    result.sectionStmtOffset = currentStmtOffset;
     result.length =
         (tokenStream.front().GetLocation().sourcePointer + tokenStream.front().GetLength() - result.location.sourcePointer);
 
