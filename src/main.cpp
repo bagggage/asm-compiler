@@ -214,6 +214,16 @@ int main(int argc, const char** argv)
     ASM::Codegen::CodeGenerator codeGenerator(context);
 
     ASM::TranslationUnit& unit = codeGenerator.ProccessAST(tree);
+
+    {
+        ASM::Codegen::MachineCode& code = unit.GetSectionMap().at(".TEXT").GetCode();
+
+        for (auto hex : code.code)
+            std::cout << std::setw(2) << std::setfill('0') << std::hex << static_cast<uint16_t>(hex) << ' ';
+
+        std::cout << std::endl;
+    }
+
     ASM::Linker linker(context);
     auto assembledObject = linker.Link(ASM::LinkingFormat::RawBinary);
 
