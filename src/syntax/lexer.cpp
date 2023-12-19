@@ -267,29 +267,63 @@ TokKind Lexer::LexIdentifierOrLiteral(Token& result)
     for (auto& c : value)
         c = std::toupper(c);
 
-    try
+    if (std::isdigit(value[0])) 
     {
-        double numericValue = std::stold(value);
+        try
+        {
+            int base = 0;
+            const size_t lastPos = value.size() - 1;
+            const char* pos = value.c_str();
 
-        result.kind = TokKind::num_constant;
-        result.data = std::make_unique<TokenNumeric>(numericValue);
+            if (value.size() > 1) {
+                if (value.find("0X") == 0 || (value.find('H') == lastPos)) {
+                    base = 16;
+                }
+                else if (value.find("0B") == 0 || value.find('B') == lastPos) {
+                    base = 2;
+
+                    if (value[1] == 'B') [[likely]]
+                        pos += 2;
+                }
+                else if (value.find("0O") == 0 ||
+                        value.find("0Q") == 0 ||
+                        value.find('Q') == lastPos ||
+                        value.find('O') == lastPos) {
+                    base = 8;
+
+                    if (value[1] > '9' && value.back() <= '9') [[likely]]
+                        pos += 2;
+                }
+            }
+
+            double numericValue;
+
+            if (base == 0)
+                numericValue = std::stold(pos);
+            else
+                numericValue = std::stoull(pos, nullptr, base);
+
+            result.kind = TokKind::num_constant;
+            result.data = std::make_unique<TokenNumeric>(numericValue);
+        }
+        catch (std::out_of_range& e) {
+            return TokKind::unknown;
+        }
+        catch (...) {
+            goto parse_identifier;
+        }
     }
-    catch (std::invalid_argument& e)
-    {
+    else {
+        parse_identifier:
         if (IdentifierToRegId.count(value) == 0)
         {
             result.kind = TokKind::identifier;
             result.data = std::make_unique<TokenString>(std::move(value));
-
             return TokKind::identifier;
         }
 
         result.kind = TokKind::reg;
         result.data = std::make_unique<TokenNumeric>(IdentifierToRegId.at(value));
-    }
-    catch (std::out_of_range& e)
-    {
-        return TokKind::unknown;
     }
 
     return result.kind;
