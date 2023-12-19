@@ -8,6 +8,21 @@
 using namespace ASM;
 using namespace ASM::AST;
 
+const std::unordered_map<std::string, unsigned int> Linker::segmentsPriorityMap =
+{
+    {".TEXT",  2},
+    {".CODE",  2},
+    {".DATA",  1},
+    {".BSS",   1},
+    {".STACK", 0},
+
+    {"TEXT",  2},
+    {"CODE",  2},
+    {"DATA",  1},
+    {"BSS",   1},
+    {"STACK", 0}
+};
+
 void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
     if (symbol.GetDeclaration().Is<ConstantDecl>()) {
         const ConstantDecl* constantDecl = symbol.GetDeclaration().GetAs<ConstantDecl>();
@@ -48,7 +63,7 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
         auto& targetSection = context->GetTranslationUnit().GetSectionMap().at(lableDecl->GetRelatedSection()->GetName());
 
         for (auto section : sectionOrder) {
-            if (section == &targetSection)
+            if (section->GetName() == targetSection.GetName())
                 break;
 
             value += section->GetCode()->size();
@@ -69,6 +84,19 @@ void Linker::LinkRawBinary(RawBinary& result) {
             sectionOrder[index] = &pair.second;
             ++index;
         }
+
+        std::sort(sectionOrder.begin(), sectionOrder.end(), [](const Section* a, const Section* b)
+        {
+            unsigned int aPriority = 0;
+            unsigned int bPriority = 0;
+
+            if (segmentsPriorityMap.count(a->GetName()) > 0)
+                aPriority = segmentsPriorityMap.at(a->GetName());
+            if (segmentsPriorityMap.count(b->GetName()) > 0)
+                bPriority = segmentsPriorityMap.at(b->GetName());
+
+            return aPriority > bPriority; 
+        });
     }
 
     for (auto& pair : context->GetSymbolTable().GetSymbolsMap()) {
@@ -89,12 +117,12 @@ void Linker::LinkRawBinary(RawBinary& result) {
         EvaluateSymbol(pair.second);
     }
 
-    for (auto& segment : context->GetTranslationUnit().GetSectionMap())
+    for (auto segment : sectionOrder)
     {
         size_t sectionBeginCodeIndex = code->size();
-        code << segment.second.GetCode();
+        code << segment->GetCode();
 
-        for (auto& linkingTarget : segment.second.GetLinkingTargets())
+        for (auto& linkingTarget : segment->GetLinkingTargets())
         {
             auto dependencies = linkingTarget.GetExpression()->GetDependecies();
             bool isValid = true;
@@ -113,10 +141,18 @@ void Linker::LinkRawBinary(RawBinary& result) {
             int64_t value = linkingTarget.GetExpression()->Resolve(symbolMap);
 
             if (linkingTarget.GetKind() == LinkingTarget::Kind::RelativeAddress)
-                value -= (context->GetSymbolTable().GetOrigin() + linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex);
+                value -= (context->GetSymbolTable().GetOrigin() + linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex); 
 
-            if ((value < 0 ? -value : value) > maxValueForCurrentSize)
+            if ((value < 0 ? -value : value) > maxValueForCurrentSize) {
                 context->Error("Value overflow while linking", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+            }
+            else {
+                const int64_t min = -(maxValueForCurrentSize / 2);
+                const int64_t max = (maxValueForCurrentSize / 2) - 1;
+
+                if (value < min || value > max)
+                    context->Warn("Signed value may be corrupted", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+            }
 
             uint8_t* valuePtr = reinterpret_cast<uint8_t*>(&value);
             

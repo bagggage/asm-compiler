@@ -26,6 +26,7 @@ namespace ASM
         void LinkRawBinary(RawBinary& result);
 
         static constexpr const size_t maxEvalDepth = 1000;
+        static const std::unordered_map<std::string, unsigned int> segmentsPriorityMap;
     public:
         Linker(AssemblyContext& context) : context(&context) {}
 

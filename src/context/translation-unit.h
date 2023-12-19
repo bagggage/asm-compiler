@@ -16,8 +16,18 @@ namespace ASM
     public:
         inline std::unordered_map<std::string, Section>& GetSectionMap() { return sections; }
 
-        inline Section& GetOrMakeSection(const std::string_view& name) { return sections[name.data()]; }
-        inline Section& GetOrMakeSection(const std::string& name) { return sections[name]; }
+        inline Section& GetOrMakeSection(const std::string_view& name)
+        { 
+            return GetOrMakeSection(std::string(name.data()));
+        }
+
+        inline Section& GetOrMakeSection(const std::string& name)
+        {
+            if (sections.count(name.data()) == 0)
+                sections.insert({ name.data(), Section(name.data()) });
+
+            return sections[name];
+        }
     };
 }
 
