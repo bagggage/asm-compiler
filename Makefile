@@ -44,7 +44,7 @@ distclean: clean
 
 TASM_DIR:=../../assembly/dos-tasm
 DOS=dosbox
-DOS_FLAGS=-c 'mount C "$(TASM_DIR)"' -c 'mount D "$(shell pwd)"' -c D: -c 'set PATH=C:\' -c cls
+DOS_FLAGS=-forcescaler normal2x -c 'mount C "$(TASM_DIR)"' -c 'mount D "$(shell pwd)"' -c D: -c 'set PATH=C:\' -c cls
 ASM=nasm
 
 dos:

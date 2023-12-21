@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <string>
+#include <iostream>
 #include <queue>
 #include <memory>
 #include <unordered_map>
@@ -35,7 +36,10 @@ namespace ASM
         TranslationUnit translationUnit;
         SymbolTable symbolTable;
 
+        std::ostream* logStream = &std::cout;
         std::queue<std::unique_ptr<Message>> messageQueue;
+
+        size_t errorsCount = 0;
 
         Message* lastError = nullptr;
 
@@ -59,6 +63,7 @@ namespace ASM
         inline SymbolTable& GetSymbolTable() { return symbolTable; }
         inline const SymbolTable& GetSymbolTable() const { return symbolTable; }
 
+        inline void SetLogOutput(std::ostream& stream) { logStream = &stream; }
         inline void SetInstructionSet(const InstructionSet_t& set) { instructionSet = &set; }
 
         inline bool IsCurrentMode(AssemblyMode intendentMode) const { return (mode == intendentMode); }
@@ -75,6 +80,9 @@ namespace ASM
         void Info(const char* message, SourceLocation location = SourceLocation(), size_t length = 0);
         void Warn(const char* message, SourceLocation location = SourceLocation(), size_t length = 0);
         void Error(const char* message, SourceLocation location = SourceLocation(), size_t length = 0);
+
+        inline bool HasErrors() const { return errorsCount > 0; }
+        inline size_t GetErrorsCount() const { return errorsCount; }
     };
 }
 

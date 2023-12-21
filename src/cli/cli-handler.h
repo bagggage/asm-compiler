@@ -81,6 +81,8 @@ namespace ASM::CLI
 
         Config config;
         std::unique_ptr<ASM::AssemblyContext> context;
+
+        static std::vector<Argument> ParseArguments(const char** argv, size_t argc);
     public:
         CommandLineInterfaceHandler(int argc, const char** argv);
 

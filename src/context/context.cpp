@@ -1,6 +1,7 @@
 #include "context.h"
 
 #include <istream>
+#include <iostream>
 #include <cassert>
 
 using namespace ASM;
@@ -49,12 +50,16 @@ void AssemblyContext::Info(const char* message, SourceLocation location, size_t 
 {
     messageQueue.push(nullptr);
     messageQueue.back().reset(MakeMessage(Message::Kind::Info, message, location, length));
+
+    *logStream << messageQueue.back()->What() << std::endl;
 }
 
 void AssemblyContext::Warn(const char* message, SourceLocation location, size_t length)
 {
     messageQueue.push(nullptr);
     messageQueue.back().reset(MakeMessage(Message::Kind::Warning, message, location, length));
+
+    *logStream << messageQueue.back()->What() << std::endl;
 }
 
 void AssemblyContext::Error(const char* message, SourceLocation location, size_t length)
@@ -63,4 +68,7 @@ void AssemblyContext::Error(const char* message, SourceLocation location, size_t
     messageQueue.back().reset(MakeMessage(Message::Kind::Error, message, location, length));
 
     lastError = messageQueue.back().get();
+    ++errorsCount;
+
+    *logStream << messageQueue.back()->What() << std::endl;
 }

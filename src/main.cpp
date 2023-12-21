@@ -173,7 +173,11 @@ void printExpression(ASM::AST::Expression* expression, bool inDepth = false, boo
 
 int main(int argc, const char** argv)
 {
-    //ASM::CLI::CommandLineInterfaceHandler cliHandler(argc, argv);
+    ASM::CLI::CommandLineInterfaceHandler cliHandler(argc, argv);
+    
+    bool result = cliHandler.Handle();
+
+    return 0;
 
     std::ifstream file;
 
@@ -216,7 +220,7 @@ int main(int argc, const char** argv)
     ASM::TranslationUnit& unit = codeGenerator.ProccessAST(tree);
 
     {
-        ASM::Codegen::MachineCode& code = unit.GetSectionMap().at(".TEXT").GetCode();
+        ASM::Codegen::MachineCode& code = unit.GetSectionMap().at(".CODE").GetCode();
 
         for (auto hex : code.code)
             std::cout << std::setw(2) << std::setfill('0') << std::hex << static_cast<uint16_t>(hex) << ' ';

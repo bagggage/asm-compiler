@@ -3,6 +3,11 @@
 #include <iostream>
 #include <fstream>
 
+#include "codegen/code-generator.h"
+#include "syntax/parser.h"
+#include "syntax/lexer.h"
+#include "linking/linker.h"
+
 using namespace ASM;
 using namespace ASM::CLI;
 
@@ -34,10 +39,9 @@ const std::unordered_map<std::string, CommandLineInterfaceHandler::Target> Comma
     { "obj", CliTarget::object }
 };
 
-CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** argv)
+std::vector<Argument> CommandLineInterfaceHandler::ParseArguments(const char** argv, size_t argc)
 {
     constexpr const char argChar = '-';
-
     std::vector<Argument> arguments;
 
     //Skip first argument, usually it is a launch directory
@@ -64,6 +68,11 @@ CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** 
 
         arguments.push_back(arg);
     }
+}
+
+CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** argv)
+{
+    auto arguments = ParseArguments(argv, argc); 
 
     for (auto arg : arguments) {
         switch (arg.GetKind())
@@ -113,6 +122,11 @@ CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** 
             break;
         }
     }
+
+    if (config.outputFile.empty() && config.inputFiles.empty() == false) {
+        config.outputFile = config.inputFiles.back();
+        config.outputFile.replace_extension("");
+    }
 }
 
 bool CommandLineInterfaceHandler::Handle()
@@ -123,12 +137,66 @@ bool CommandLineInterfaceHandler::Handle()
         return false;
     }
 
-    std::ifstream file(config.inputFiles.back());
+    std::ifstream in(config.inputFiles.back());
+    std::ofstream out(config.outputFile);
+    std::ofstream logOutput;
 
-    if (file.is_open() == false)
+    if (in.is_open() == false)
     {
         std::cout << "Can't open input file \'" << config.inputFiles.back() << "\'" << std::endl;
+        return false;
     }
 
-    //context = std::make_unique<AssemblyContext>();
+    if (out.is_open() == false)
+    {
+        std::cout << "Can't open output file \'" << config.outputFile << "\'" << std::endl;
+        return false;
+    }
+
+    context = std::make_unique<AssemblyContext>(in, Arch::Arch8086::InstructionSet);
+
+    if (config.logOutput.empty() == false)
+    {
+        logOutput.open(config.logOutput);
+
+        if (logOutput.is_open() == false)
+        {
+            std::cout << "Can't open log output file \'" << config.logOutput << "\'" << std::endl;
+            return false;
+        }
+
+        context->SetLogOutput(logOutput);
+    }
+
+    Lexer lexer(*context);
+    Parser parser(*context);
+    Codegen::CodeGenerator codeGenerator(*context);
+    Linker linker(*context);
+
+    {
+        ASM::Token token;
+    
+        while (lexer.GetNextToken(token) || token.Is(ASM::TokKind::eof) == false)
+            parser.PushToken(std::move(token));
+    
+        parser.PushToken(std::move(token));
+    }
+
+    AbstractSyntaxTree ast = parser.Parse();
+
+    codeGenerator.ProccessAST(ast);
+    
+    std::unique_ptr<AssembledObject> assembledObject = linker.Link(LinkingFormat::RawBinary);
+    
+    if (context->HasErrors())
+    {
+        const std::string result = "[Build failed] " + std::to_string(context->GetErrorsCount()) + " errors";
+        context->Info(result.c_str());
+        return false;
+    }
+
+    if (assembledObject->Serialize(out) == false)
+    {
+        context->Error("Can't write assembled object to file, something went wrong...");
+    }
 }
