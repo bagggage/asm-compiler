@@ -221,5 +221,8 @@ bool CommandLineInterfaceHandler::Handle()
     if (assembledObject->Serialize(out) == false)
     {
         context->Error("Can't write assembled object to file, something went wrong...");
+        return false;
     }
+
+    return true;
 }
