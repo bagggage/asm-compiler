@@ -265,6 +265,7 @@ bool Parser::ParsePrimary(Expression*& result)
     {
         if (token->IsUnaryOperator() && token->Is(TokKind::minus) == false)
         {
+            delete result;
             context->Error("Invalid expression, expected binary operator between", tokenStream.front().GetLocation());
             return false;
         }
@@ -766,7 +767,7 @@ bool Parser::ParseInstructionStmt(InstructionStmt& result)
     {
         NextToken();
 
-        Expression* expression;
+        Expression* expression = nullptr;
 
         if (ParsePrimary(expression) == false)
             return false;

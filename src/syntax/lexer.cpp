@@ -337,10 +337,9 @@ bool Lexer::GetNextToken(Token& result)
     while (std::isspace(*cursor))
         Next();
 
-    while (*cursor == commentSym)
+    if (*cursor == commentSym)
     {
         SkipLine();
-        
         return GetNextToken(result);
     }
 

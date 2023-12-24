@@ -133,7 +133,7 @@ bool Linker::IsValueCompatibleWithSize(int64_t value, const LinkingTarget& linki
         return false;
     }
     else {
-        const int64_t min = -(maxValueForCurrentSize / 2);
+        const int64_t min = - static_cast<int64_t>(maxValueForCurrentSize / 2);
         const int64_t max = (maxValueForCurrentSize / 2) - 1;
 
         if (value < min || value > max)
