@@ -33,6 +33,7 @@ const std::unordered_map<std::string, TokKind> Lexer::KeywordsToKind =
 {
     KW_TO_KIND("SECTION", section),
     KW_TO_KIND("SEGMENT", segment),
+    KW_TO_KIND("STACK",   stack),
     KW_TO_KIND("OFFSET",  offset),
     KW_TO_KIND("ORG",     org),
     KW_TO_KIND("GLOBAL",  global),

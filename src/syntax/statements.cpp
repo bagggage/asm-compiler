@@ -595,3 +595,27 @@ size_t AlignStmt::GetMaxStmtByteSize() const
 {   
     return value->Resolve();
 }
+
+MachineCode StackStmt::CodeGen(Codegen::CodeGenerator& generator) const
+{
+    MachineCode result;
+
+    auto size = generator.ResolveExpression(value.get());
+
+    if (size.has_value() == false) [[unlikely]]
+    {
+        generator.GetContext().Error("Can't resolve expression dependencies on code generation stage", location, length);
+        return result;
+    }
+
+    if (generator.GetContext().GetTranslationUnit().GetRequiredStackSize() != 0 &&
+        *size != generator.GetContext().GetTranslationUnit().GetRequiredStackSize())
+    {
+        generator.GetContext().Error("Stack size redefenition", location, length);
+        return result;
+    }
+
+    generator.GetContext().GetTranslationUnit().SetStackSize(*size);
+
+    return result;
+}

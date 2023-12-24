@@ -61,6 +61,7 @@ namespace ASM
             kw_org,
             kw_section,
             kw_segment,
+            kw_stack,
             kw_offset,
             kw_align,
             kw_dup,

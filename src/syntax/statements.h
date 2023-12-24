@@ -109,6 +109,12 @@ namespace ASM::AST
         Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
         size_t GetMaxStmtByteSize() const override;
     };
+
+    struct StackStmt : public ParametricStmt
+    {
+    public:
+        Codegen::MachineCode CodeGen(Codegen::CodeGenerator& generator) const override;
+    };
 }
 
 #endif

@@ -23,7 +23,11 @@ const std::unordered_map<std::string, unsigned int> Linker::segmentsPriorityMap 
     {"STACK", 0}
 };
 
-void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
+size_t Linker::GetOrderedSectionOffset(const std::string& sectionName) {
+    return symbolMap.at('@' + sectionName) * 16;
+}
+
+void Linker::EvaluateSymbol(const Symbol& symbol, bool absoluteValue, unsigned int depth) {
     if (symbol.GetDeclaration().Is<ConstantDecl>()) {
         const ConstantDecl* constantDecl = symbol.GetDeclaration().GetAs<ConstantDecl>();
         auto dependencies = constantDecl->GetExpression().GetDependecies();
@@ -31,7 +35,7 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
         for (auto depencency : dependencies)
             if (symbolMap.count(*depencency) < 1) {
                 if (depth < maxEvalDepth) {
-                    EvaluateSymbol(context->GetSymbolTable().GetSymbol(*depencency), depth + 1);
+                    EvaluateSymbol(context->GetSymbolTable().GetSymbol(*depencency), absoluteValue, depth + 1);
                 }
                 else {
                     context->Error(
@@ -44,7 +48,6 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
             }
 
         int64_t value = constantDecl->GetExpression().Resolve(symbolMap);
-
         symbolMap.insert({ constantDecl->GetName(), value });
     }
     else if (symbol.GetDeclaration().Is<LableDecl>()) {
@@ -57,65 +60,100 @@ void Linker::EvaluateSymbol(const Symbol& symbol, unsigned int depth) {
         }
 
         const LableDecl* lableDecl = symbol.GetDeclaration().GetAs<LableDecl>();
-        
-        int64_t value = symbol.GetValue().GetAsInt() + context->GetSymbolTable().GetOrigin();
+        int64_t value = symbol.GetValue().GetAsInt();
 
-        auto& targetSection = context->GetTranslationUnit().GetSectionMap().at(lableDecl->GetRelatedSection()->GetName());
-
-        for (auto section : sectionOrder) {
-            if (section->GetName() == targetSection.GetName())
-                break;
-
-            value += section->GetCode()->size();
-        }
+        if (absoluteValue)
+            value += context->GetSymbolTable().GetOrigin() + GetOrderedSectionOffset(lableDecl->GetRelatedSection()->GetName());
 
         symbolMap.insert({ lableDecl->GetName(), value });
     }
 }
 
-void Linker::LinkRawBinary(RawBinary& result) {
-    Codegen::MachineCode& code = result.GetCode();
+void Linker::OrderSections()
+{
+    size_t index = 0;
+    sectionOrder.resize(context->GetTranslationUnit().GetSectionMap().size());
 
-    {
-        size_t index = 0;
-        sectionOrder.resize(context->GetTranslationUnit().GetSectionMap().size());
-
-        for (auto& pair : context->GetTranslationUnit().GetSectionMap()) {
-            sectionOrder[index] = &pair.second;
-            ++index;
-        }
-
-        std::sort(sectionOrder.begin(), sectionOrder.end(), [](const Section* a, const Section* b)
-        {
-            unsigned int aPriority = 0;
-            unsigned int bPriority = 0;
-
-            if (segmentsPriorityMap.count(a->GetName()) > 0)
-                aPriority = segmentsPriorityMap.at(a->GetName());
-            if (segmentsPriorityMap.count(b->GetName()) > 0)
-                bPriority = segmentsPriorityMap.at(b->GetName());
-
-            return aPriority > bPriority; 
-        });
-    }
-
-    for (auto& pair : context->GetSymbolTable().GetSymbolsMap()) {
-        if (pair.second.GetDeclaration().Is<SectionDecl>()) {
-            int64_t value = 0;
-
-            const SectionDecl* sectionDecl = pair.second.GetDeclaration().GetAs<SectionDecl>();
-            auto targetIt = context->GetTranslationUnit().GetSectionMap().find(sectionDecl->GetName());
-
-            for (size_t i = 0; sectionOrder[i] != &targetIt->second; ++i) {
-                value += sectionOrder[i]->GetCode()->size();
-            }
-
-            symbolMap.insert({ sectionDecl->GetName(), value });
+    for (auto& pair : context->GetTranslationUnit().GetSectionMap()) {
+        if (pair.second.GetCode()->size() == 0) {
+            sectionOrder.pop_back();
             continue;
         }
-
-        EvaluateSymbol(pair.second);
+        sectionOrder[index] = &pair.second;
+        ++index;
     }
+
+    std::sort(sectionOrder.begin(), sectionOrder.end(), [](const Section* a, const Section* b)
+    {
+        unsigned int aPriority = 0;
+        unsigned int bPriority = 0;
+
+        if (segmentsPriorityMap.count(a->GetName()) > 0)
+            aPriority = segmentsPriorityMap.at(a->GetName());
+        if (segmentsPriorityMap.count(b->GetName()) > 0)
+            bPriority = segmentsPriorityMap.at(b->GetName());
+
+        return aPriority > bPriority; 
+    });
+
+    size_t value = 0;
+
+    for (auto section : sectionOrder) {
+        if ((section != sectionOrder.back()) && section->GetCode()->size() % 16 != 0) [[unlikely]]
+        {
+            uint8_t mod = section->GetCode()->size() % 16;
+            uint8_t align = mod > 0 ? (16 - mod) : 0;
+
+            section->GetCode()->resize(section->GetCode()->size() + align, 0);
+        }
+
+        symbolMap.insert({ '@' + section->GetName(), value });
+        value += section->GetCode()->size() / 16;
+    }
+}
+
+bool Linker::IsValidDependencies(const Expression* expression, std::vector<const std::string*>& dependencies)
+{
+    for (auto depencency : dependencies) {
+        if (symbolMap.count(*depencency) == 0) [[unlikely]] {
+            context->Error("Undefined symbol", expression->GetLocation(), expression->GetLength());
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Linker::IsValueCompatibleWithSize(int64_t value, const LinkingTarget& linkingTarget)
+{
+    uint64_t maxValueForCurrentSize = std::pow(std::numeric_limits<uint8_t>::max(), linkingTarget.GetSize());
+            
+    if ((value < 0 ? -value : value) > maxValueForCurrentSize) [[unlikely]] {
+        context->Error("Value overflow while linking", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+        return false;
+    }
+    else {
+        const int64_t min = -(maxValueForCurrentSize / 2);
+        const int64_t max = (maxValueForCurrentSize / 2) - 1;
+
+        if (value < min || value > max)
+            context->Warn("Signed value may be corrupted", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+    }
+
+    return true;
+}
+
+void Linker::LinkRawBinary(RawBinary& result)
+{
+    Codegen::MachineCode& code = result.GetCode();
+
+    if (context->GetTranslationUnit().GetRequiredStackSize() != 0)
+        context->Warn("\'STACK\' statement is not supported with .COM format - ignored");
+
+    OrderSections();
+
+    for (auto& pair : context->GetSymbolTable().GetSymbolsMap())
+        EvaluateSymbol(pair.second, true);
 
     for (auto segment : sectionOrder)
     {
@@ -125,40 +163,80 @@ void Linker::LinkRawBinary(RawBinary& result) {
         for (auto& linkingTarget : segment->GetLinkingTargets())
         {
             auto dependencies = linkingTarget.GetExpression()->GetDependecies();
-            bool isValid = true;
-
-            for (auto depencency : dependencies)
-                if (symbolMap.count(*depencency) == 0) {
-                    isValid = false;
-                    context->Error("Undefined symbol", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
-                    break;
-                }
-
-            if (isValid == false) [[unlikely]]
+            if (IsValidDependencies(linkingTarget.GetExpression(), dependencies) == false) [[unlikely]]
                 continue;
 
-            uint64_t maxValueForCurrentSize = std::pow(std::numeric_limits<uint8_t>::max(), linkingTarget.GetSize());
             int64_t value = linkingTarget.GetExpression()->Resolve(symbolMap);
 
             if (linkingTarget.GetKind() == LinkingTarget::Kind::RelativeAddress)
                 value -= (context->GetSymbolTable().GetOrigin() + linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex); 
 
-            if ((value < 0 ? -value : value) > maxValueForCurrentSize) {
-                context->Error("Value overflow while linking", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
+            if (IsValueCompatibleWithSize(value, linkingTarget)) [[likely]]
+            {
+                uint8_t* valuePtr = reinterpret_cast<uint8_t*>(&value);
+                for (uint8_t i = 0; i < linkingTarget.GetSize(); ++i)
+                    code[sectionBeginCodeIndex + linkingTarget.GetSectionOffset() + i] = valuePtr[i];
             }
-            else {
-                const int64_t min = -(maxValueForCurrentSize / 2);
-                const int64_t max = (maxValueForCurrentSize / 2) - 1;
-
-                if (value < min || value > max)
-                    context->Warn("Signed value may be corrupted", linkingTarget.GetExpression()->GetLocation(), linkingTarget.GetExpression()->GetLength());
-            }
-
-            uint8_t* valuePtr = reinterpret_cast<uint8_t*>(&value);
-            
-            for (uint8_t i = 0; i < linkingTarget.GetSize(); ++i)
-                code[sectionBeginCodeIndex + linkingTarget.GetSectionOffset() + i] = valuePtr[i];
         }
+    }
+}
+
+void Linker::LinkExe(ExeObject& result)
+{
+    Codegen::MachineCode& code = result.code;
+
+    OrderSections();
+
+    if (context->GetSymbolTable().GetOrigin() != 0)
+        context->Warn("Origin offset not allowed with .EXE format - ignored");
+
+    for (auto& pair : context->GetSymbolTable().GetSymbolsMap())
+        EvaluateSymbol(pair.second, false);
+
+    for (auto segment : sectionOrder)
+    {
+        size_t sectionBeginCodeIndex = code->size();
+        code << segment->GetCode();
+
+        for (auto& linkingTarget : segment->GetLinkingTargets())
+        {
+            auto dependencies = linkingTarget.GetExpression()->GetDependecies();
+            if (IsValidDependencies(linkingTarget.GetExpression(), dependencies) == false) [[unlikely]]
+                continue;
+
+            for (auto depencency : dependencies)
+            {
+                if (depencency->at(0) == '@' && context->GetTranslationUnit().GetSectionMap().count(depencency->c_str() + 1) > 0) {
+                    result.relocationTable.push_back({ static_cast<uint16_t>(linkingTarget.GetSectionOffset() + sectionBeginCodeIndex), 0 });
+                    break;
+                }
+            }
+
+            int64_t value = linkingTarget.GetExpression()->Resolve(symbolMap);
+
+            if (linkingTarget.GetKind() == LinkingTarget::Kind::RelativeAddress)
+                value -= (linkingTarget.GetRelativeOrigin() + sectionBeginCodeIndex); 
+
+            if (IsValueCompatibleWithSize(value, linkingTarget)) [[likely]]
+            {
+                uint8_t* valuePtr = reinterpret_cast<uint8_t*>(&value);
+                for (uint8_t i = 0; i < linkingTarget.GetSize(); ++i)
+                    code[sectionBeginCodeIndex + linkingTarget.GetSectionOffset() + i] = valuePtr[i];
+            }
+        }
+    }
+
+    if (context->GetTranslationUnit().GetRequiredStackSize() == 0) {
+        context->Warn("Stack missing");
+    }
+    else {
+        result.mzHeader.initialRelativeSS = code->size();
+        
+        if (code->size() % result.paragraphByteSize > 0)
+            result.mzHeader.initialRelativeSS += (result.paragraphByteSize - (code->size() % result.paragraphByteSize));
+
+        result.mzHeader.initialRelativeSS /= 16;
+        result.mzHeader.initialSp = context->GetTranslationUnit().GetRequiredStackSize();
     }
 }
 
@@ -172,7 +250,12 @@ std::unique_ptr<AssembledObject> Linker::Link(LinkingFormat format)
     {
         result = std::make_unique<RawBinary>();
         LinkRawBinary(*reinterpret_cast<RawBinary*>(result.get()));
-
+        break;
+    }
+    case LinkingFormat::DosExecutable:
+    {
+        result = std::make_unique<ExeObject>();
+        LinkExe(*reinterpret_cast<ExeObject*>(result.get()));
         break;
     }
     default:

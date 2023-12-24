@@ -13,6 +13,9 @@ namespace ASM
     {
     private:
         std::unordered_map<std::string, Section> sections;
+
+        size_t addressSymbolsOrigin = 0;
+        size_t requiredStackSize = 0;
     public:
         inline std::unordered_map<std::string, Section>& GetSectionMap() { return sections; }
 
@@ -23,11 +26,14 @@ namespace ASM
 
         inline Section& GetOrMakeSection(const std::string& name)
         {
-            if (sections.count(name.data()) == 0)
+            if (sections.count(name.data()) == 0) [[unlikely]]
                 sections.insert({ name.data(), Section(name.data()) });
 
-            return sections[name];
+            return sections.at(name);
         }
+
+        inline size_t GetRequiredStackSize() const { return requiredStackSize; }
+        inline void SetStackSize(size_t size) { requiredStackSize = size; }
     };
 }
 

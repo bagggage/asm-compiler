@@ -68,13 +68,15 @@ std::vector<Argument> CommandLineInterfaceHandler::ParseArguments(const char** a
 
         arguments.push_back(arg);
     }
+
+    return arguments;
 }
 
 CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** argv)
 {
     auto arguments = ParseArguments(argv, argc); 
 
-    for (auto arg : arguments) {
+    for (auto& arg : arguments) {
         switch (arg.GetKind())
         {
         case ArgKind::output:
@@ -87,11 +89,19 @@ CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** 
             config.logOutput = arg.GetValue();
             break;
         case ArgKind::format:
+        {
             if (StrToTarget.count(arg.GetValue()) == 0)
             {
                 std::cout << "Unknown output format \'" << arg.GetValue() << "\', use help to see all supported formats" << std::endl;
                 break;
             }
+
+            auto oldTarget = config.target;
+            config.target = StrToTarget.at(arg.GetValue());
+
+            if (oldTarget == Target::linking_com)
+                goto set_linking_format;
+        }
             break;
         case ArgKind::show_all:
             config.debugInfo = 
@@ -112,6 +122,7 @@ CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** 
         case ArgKind::show_sections:
             break;
         case ArgKind::linking:
+        set_linking_format:
             if (config.target == Target::com || config.target == Target::exe)
                 *reinterpret_cast<uint8_t*>(&config.target) += static_cast<uint8_t>(Target::linking_com) - static_cast<uint8_t>(Target::com);
             else
@@ -186,7 +197,19 @@ bool CommandLineInterfaceHandler::Handle()
 
     codeGenerator.ProccessAST(ast);
     
-    std::unique_ptr<AssembledObject> assembledObject = linker.Link(LinkingFormat::RawBinary);
+    std::unique_ptr<AssembledObject> assembledObject;
+    
+    switch (config.target)
+    {
+    case Target::com:
+        assembledObject = linker.Link(LinkingFormat::RawBinary);
+        break;
+    case Target::exe:
+        assembledObject = linker.Link(LinkingFormat::DosExecutable);
+        break;
+    default:
+        break;
+    }
     
     if (context->HasErrors())
     {

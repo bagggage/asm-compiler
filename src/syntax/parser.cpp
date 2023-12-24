@@ -180,6 +180,13 @@ AbstractSyntaxTree Parser::Parse()
 
                 break;
             }
+            case TokKind::kw_stack:
+            {
+                result.push_back(std::make_unique<StackStmt>());
+                success = ParseParametricStmt(*result.back()->GetAs<ParametricStmt>());
+
+                break;
+            }
             case TokKind::kw_extern: case TokKind::kw_global:
             {
                 result.push_back(std::make_unique<SymbolDecl>(""));
