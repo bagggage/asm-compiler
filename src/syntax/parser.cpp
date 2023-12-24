@@ -435,8 +435,8 @@ bool Parser::ParseExpression(Expression*& result)
         {
             if (currentParentLable == nullptr)
             {
-                context->Error("Using local lable symbol ouside of any parent lable", result->location, result->length);
                 delete result;
+                context->Error("Using local lable symbol ouside of any parent lable", result->location, result->length);
 
                 return false;
             }
