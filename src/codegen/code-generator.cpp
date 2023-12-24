@@ -205,7 +205,7 @@ SmallVector<Arch::OperandEvaluation, 4> CodeGenerator::EvaluateOperands(const In
         }
     }
 
-    return std::move(result);
+    return result;
 }
 
 void CodeGenerator::ChangeCurrentSection(const std::string& sectionName)
@@ -220,10 +220,6 @@ const Arch::Instruction* CodeGenerator::ChooseInstructionByOperands(const std::s
 
     const Arch::Instruction* mostAppropriateInstruction = nullptr;
     int8_t priority = 0;
-
-    if (operands.empty() == false)
-        if (operands.back()->GetLocation().line == 1415)
-            std::cout << '!' << std::endl;
 
     auto evaluatedOperands = EvaluateOperands(operands);
 

@@ -401,58 +401,10 @@ MachineCode DefineDataStmt::CodeGen(CodeGenerator& generator) const
             auto value = generator.ResolveExpression(dupExpr->GetValueExpression());
 
             if (value.has_value()) {
-                //size_t unitBeginIdx = result->size();
-
                 int64_t data = *value;
 
                 for (size_t i = 0; i < *count; ++i)
                     result.Push(reinterpret_cast<uint8_t*>(&data), dataUnitSize);
-
-                //size_t unitEndIdx = result->size();
-
-                //result->resize(unitEndIdx + *count - 1);
-                //
-                //switch (dataUnitSize)
-                //{
-                //case 1:
-                //{
-                //    std::fill(result->begin() + unitEndIdx, result->end(), result[unitBeginIdx]);
-                //    break;
-                //}
-                //case 2:
-                //{
-                //    uint16_t* data = reinterpret_cast<uint16_t*>(result->data() + unitEndIdx);
-                //    uint16_t value = *reinterpret_cast<uint16_t*>(result->data() + unitBeginIdx);
-                //
-                //    for (size_t i = 0; i < *count - 1; ++i)
-                //        data[i] = value;
-                //
-                //    break;
-                //}
-                //case 4:
-                //{
-                //    uint32_t* data = reinterpret_cast<uint32_t*>(result->data() + unitEndIdx);
-                //    uint32_t value = *reinterpret_cast<uint32_t*>(result->data() + unitBeginIdx);
-                //
-                //    for (size_t i = 0; i < *count - 1; ++i)
-                //        data[i] = value;
-                //
-                //    break;
-                //}
-                //case 8:
-                //{
-                //    uint64_t* data = reinterpret_cast<uint64_t*>(result->data() + unitEndIdx);
-                //    uint64_t value = *reinterpret_cast<uint64_t*>(result->data() + unitBeginIdx);
-                //
-                //    for (size_t i = 0; i < *count - 1; ++i)
-                //        data[i] = value;
-                //
-                //    break;
-                //}
-                //default:
-                //    assert(false);
-                //    break;
-                //}
             }
             else {
                 const uint8_t zero = 0;

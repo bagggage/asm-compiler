@@ -622,6 +622,8 @@ size_t Instruction::GetMaxByteSize() const
         result += 1 + 2 + 2; break;
     case OpEn::I: case OpEn::D: case OpEn::TD: case OpEn::FD: case OpEn::OI:
         result += 2; break;
+    default:
+        break;
     }
 
     return result;
