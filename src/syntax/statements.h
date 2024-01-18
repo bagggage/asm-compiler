@@ -88,6 +88,8 @@ namespace ASM::AST
         friend class ASM::Parser;
 
         std::unique_ptr<Expression> value;
+    public:
+        inline Expression* GetValueExpression() const { return value.get(); }
     };
 
     struct OrgStmt : public ParametricStmt

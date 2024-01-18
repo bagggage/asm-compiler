@@ -107,7 +107,7 @@ namespace ASM::AST
         std::vector<const std::string*> GetDependecies() const override;
 
         char GetOperation() const { return operation; }
-        Expression* GetExpression() { return expression.get(); }
+        Expression* GetExpression() const { return expression.get(); }
     };
 
     struct BinaryExpr : public Expression
