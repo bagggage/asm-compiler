@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <filesystem>
 
+#include "syntax/ast.h"
 #include "context/context.h"
 
 namespace ASM::CLI
@@ -82,7 +83,16 @@ namespace ASM::CLI
         Config config;
         std::unique_ptr<ASM::AssemblyContext> context;
 
+        static std::string logDebugStringBuffer;
         static std::vector<Argument> ParseArguments(const char** argv, size_t argc);
+
+        void PrintExpression(const AST::Expression* expression, bool inDepth = false, bool isLast = true, std::string& startString = logDebugStringBuffer);
+        void PrintSymbolDecl(const AST::Declaration* declaration);
+
+        void LogAST(ASM::AbstractSyntaxTree& ast);
+        void LogSection(ASM::Section& section);
+        void LogLinkingTarget(ASM::LinkingTarget& linkingTaget);
+        void LogSymbolTable(ASM::SymbolTable& symbolTable);
     public:
         CommandLineInterfaceHandler(int argc, const char** argv);
 

@@ -68,6 +68,7 @@ namespace ASM
 
         inline bool IsCurrentMode(AssemblyMode intendentMode) const { return (mode == intendentMode); }
 
+        inline std::ostream& GetLogOutput() const { return *logStream; }
         inline const std::string& GetSource() const { return currentSource; }
         inline bool HasMessages() const { return (messageQueue.empty() == false); }
 

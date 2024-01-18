@@ -140,6 +140,219 @@ CommandLineInterfaceHandler::CommandLineInterfaceHandler(int argc, const char** 
     }
 }
 
+std::string CommandLineInterfaceHandler::logDebugStringBuffer = std::string();
+
+void CommandLineInterfaceHandler::PrintExpression(const AST::Expression* expression, bool inDepth, bool isLast, std::string& startString)
+{
+    auto& out = context->GetLogOutput();
+
+    uint8_t temp = 0;
+
+    if (inDepth)
+        startString.push_back('\t');
+    
+    out << startString << (isLast ? '`' : '|') << '-';
+
+    if (isLast == false)
+        startString.push_back('|');
+
+    if (expression->Is<AST::NumberExpr>())
+        out << "\033[1mnum\033[0m \'" << expression->GetAs<AST::NumberExpr>()->value << '\'' << std::endl;
+    else if (expression->Is<AST::LiteralExpr>())
+        out << "\033[1mliteral\033[0m \'" << expression->GetAs<AST::LiteralExpr>()->value << '\'' << std::endl;
+    else if (expression->Is<AST::RegisterExpr>()) {
+
+        out << "\033[1mreg\033[0m \'" << (int)expression->GetAs<AST::RegisterExpr>()->GetIdentifier() << '\'' << std::endl;
+    }
+    else if (expression->Is<AST::SymbolExpr>())
+    {
+        const AST::SymbolExpr* symbolExpr = expression->GetAs<AST::SymbolExpr>();
+
+        out << "\033[1msymbol\033[0m \'" << symbolExpr->GetName();
+
+        if (context->GetSymbolTable().HasSymbol(symbolExpr->GetName()))
+        {
+            auto& symbol = context->GetSymbolTable().GetSymbol(symbolExpr->GetName());
+    
+            out << ": ";
+    
+            switch (symbol.GetDeclaration().GetScope())
+            {
+            case AST::SymbolDecl::Scope::Local: out << "local"; break;
+            case AST::SymbolDecl::Scope::Extern: out << "extern"; break;
+            case AST::SymbolDecl::Scope::Global: out << "global"; break;
+            default:
+                break;
+            }
+    
+            out << '-' << (symbol.GetDeclaration().IsAddress() ? "address" : "literal");
+        }
+
+        out << '\'' << std::endl;
+    }
+    else if (expression->Is<AST::BinaryExpr>())
+    {
+        out << "\033[1mbinary\033[0m \'" << expression->GetAs<AST::BinaryExpr>()->operation << '\'' << std::endl;
+
+        PrintExpression(expression->GetAs<AST::BinaryExpr>()->lhs.get(), true, false);
+        PrintExpression(expression->GetAs<AST::BinaryExpr>()->rhs.get(), true);
+    }
+    else if (expression->Is<AST::UnaryExpr>())
+    {
+        out << "\033[1munary\033[0m \'" << expression->GetAs<AST::UnaryExpr>()->GetOperation() << '\'' << std::endl;
+
+        PrintExpression(expression->GetAs<AST::UnaryExpr>()->GetExpression(), true);
+    }
+    else if (expression->Is<AST::MemoryExpr>())
+    {
+        out << "\033[1mmemory\033[0m" << std::endl;
+
+        if (expression->GetAs<AST::MemoryExpr>()->GetSegOverride() != nullptr)
+            PrintExpression(expression->GetAs<AST::MemoryExpr>()->GetSegOverride(), true, false);
+
+        PrintExpression(expression->GetAs<AST::MemoryExpr>()->GetExpression(), true);
+    }
+    else if (expression->Is<AST::ParenExpr>())
+    {
+        out << "\033[1mparen\033[0m" << std::endl;
+
+        PrintExpression(expression->GetAs<AST::ParenExpr>()->GetExpression(), true);
+    }
+
+    if (isLast == false)
+        startString.pop_back();
+    if (inDepth)
+        startString.pop_back();
+}
+
+void CommandLineInterfaceHandler::PrintSymbolDecl(const AST::Declaration* ptr)
+{
+    auto& out = context->GetLogOutput();
+
+    if (ptr->Is<AST::ConstantDecl>())
+    {
+        out << "\033[1mConstant\033[0m: " << ptr->GetAs<AST::ConstantDecl>()->GetName() << std::endl;
+        PrintExpression(&ptr->GetAs<AST::ConstantDecl>()->GetExpression(), true);
+    }
+    else if (ptr->Is<AST::SectionDecl>())
+    {
+        out << "\033[1mSection\033[0m: " << ptr->GetAs<AST::SectionDecl>()->GetName() << std::endl;
+    }
+    else if (ptr->Is<AST::LableDecl>())
+    {
+        out << "\033[1mLable\033[0m: " << ptr->GetAs<AST::LableDecl>()->GetName() << std::endl;
+    }
+}
+
+void CommandLineInterfaceHandler::LogAST(AbstractSyntaxTree& ast)
+{
+    auto& out = context->GetLogOutput();
+
+    out << "[AST Interpretation]:" << std::endl;
+
+    for (auto& ptr : ast)
+    {
+        out << '>';
+
+        if (ptr->Is<AST::SymbolDecl>())
+        {
+            PrintSymbolDecl(ptr->GetAs<AST::SymbolDecl>());
+        }
+        else if (ptr->Is<AST::InstructionStmt>())
+        {
+            out << "\033[1mInstruction\033[0m: " << ptr->GetAs<AST::InstructionStmt>()->GetMnemonic() << std::endl;
+            
+            auto& operands = ptr->GetAs<AST::InstructionStmt>()->GetOperands();
+
+            for (auto& operand : operands)
+                PrintExpression(operand.get(), true, &operand == &operands.back());
+        }
+        else if (ptr->Is<AST::DefineDataStmt>())
+        {
+            out << "\033[1mData define\033[0m: " << (int)ptr->GetAs<AST::DefineDataStmt>()->GetDataUnitSize() << "b" << std::endl;
+
+            auto& operands = ptr->GetAs<AST::DefineDataStmt>()->GetUnits();
+
+            for (auto& operand : operands)
+                PrintExpression(operand.get(), true, &operand == &operands.back());
+        }
+        else if (ptr->Is<AST::AlignStmt>())
+        {
+            out << "\033[1mAlign\033[0m: " << std::endl;
+            PrintExpression(ptr->GetAs<AST::AlignStmt>()->GetValueExpression(), true);
+        }
+        else if (ptr->Is<AST::OffsetStmt>())
+        {
+            out << "\033[1mOffset\033[0m: " << std::endl;
+            PrintExpression(ptr->GetAs<AST::OffsetStmt>()->GetValueExpression(), true);   
+        }
+        else if (ptr->Is<AST::OrgStmt>())
+        {
+            out << "\033[1mOrigin\033[0m: " << std::endl;
+            PrintExpression(ptr->GetAs<AST::OrgStmt>()->GetValueExpression(), true);
+        }
+        else if (ptr->Is<AST::StackStmt>())
+        {
+            out << "\033[1mStack\033[0m: " << std::endl;
+            PrintExpression(ptr->GetAs<AST::StackStmt>()->GetValueExpression(), true);
+        }
+    }
+
+    out << std::endl;
+}
+
+void CommandLineInterfaceHandler::LogSection(ASM::Section& section)
+{
+    auto& out = context->GetLogOutput();
+
+    out << "Section: " << section.GetName() << std::endl;
+
+    if (config.debugInfo & static_cast<uint8_t>(DebugInfo::linking_targets))
+    {
+        out << "[Linking Targets]:" << std::endl;
+
+        for (auto& link : section.GetLinkingTargets())
+        {
+            out << "0x" << std::setfill('0') << std::setw(16) << link.GetSectionOffset()
+            << ": " << (link.GetKind() == ASM::LinkingTarget::Kind::RelativeAddress ? "Relative" : "Value\\Absolute")
+            << ' ' << (link.GetType() == ASM::LinkingTarget::Type::Integer ? "int" : "float")
+            << std::dec << static_cast<uint16_t>(link.GetSize()) * 8 << "_t" << ':' << std::endl;
+
+            PrintExpression(link.GetExpression());
+        }
+    }
+
+    out << std::endl;
+}
+
+void CommandLineInterfaceHandler::LogLinkingTarget(ASM::LinkingTarget& link)
+{
+    auto& out = context->GetLogOutput();
+
+    out << "0x" << std::setfill('0') << std::setw(16) << link.GetSectionOffset()
+    << ": " << (link.GetKind() == ASM::LinkingTarget::Kind::RelativeAddress ? "Relative" : "Value\\Absolute")
+    << ' ' << (link.GetType() == ASM::LinkingTarget::Type::Integer ? "int" : "float")
+    << std::dec << static_cast<uint16_t>(link.GetSize()) * 8 << "_t" << ':' << std::endl;
+
+    PrintExpression(link.GetExpression());
+}
+
+void CommandLineInterfaceHandler::LogSymbolTable(ASM::SymbolTable& symbolTable)
+{
+    auto& out = context->GetLogOutput();
+
+    out << "[Symbol Table]:" << std::endl;
+
+    for (auto& pair : symbolTable.GetSymbolsMap())
+    {
+        out << "Symbol \'" << pair.first << "\':" << std::endl;
+        PrintSymbolDecl(&pair.second.GetDeclaration());
+        
+        if (pair.second.IsEvaluated())
+            out << "Value: " << pair.second.GetValue().GetAsInt() << std::endl;
+    }
+}
+
 bool CommandLineInterfaceHandler::Handle()
 {
     if (config.inputFiles.size() == 0)
@@ -195,6 +408,9 @@ bool CommandLineInterfaceHandler::Handle()
 
     AbstractSyntaxTree ast = parser.Parse();
 
+    if (config.debugInfo & static_cast<uint8_t>(DebugInfo::ast))
+        LogAST(ast);
+
     codeGenerator.ProccessAST(ast);
     
     std::unique_ptr<AssembledObject> assembledObject;
@@ -213,10 +429,18 @@ bool CommandLineInterfaceHandler::Handle()
     
     if (context->HasErrors())
     {
-        const std::string result = "[Build failed] " + std::to_string(context->GetErrorsCount()) + " errors";
+        const std::string result = "Build failed: " + std::to_string(context->GetErrorsCount()) + " errors";
         context->Info(result.c_str());
         return false;
     }
+
+    if (config.debugInfo & static_cast<uint8_t>(DebugInfo::sections))
+    {
+        for (auto& pair : context->GetTranslationUnit().GetSectionMap())
+            LogSection(pair.second);
+    }
+    if (config.debugInfo & static_cast<uint8_t>(DebugInfo::symbol_table))
+        LogSymbolTable(context->GetSymbolTable());
 
     if (assembledObject->Serialize(out) == false)
     {

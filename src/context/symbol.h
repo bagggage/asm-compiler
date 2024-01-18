@@ -24,6 +24,7 @@ namespace ASM
         SymbolValue(Kind kind, double value) : kind(kind), absoluteValue(value) {}
 
         uint8_t GetRequiredSize() const;
+        inline Kind GetKind() const { return kind; }
 
         inline int64_t GetAsInt() const { return absoluteValue; }
         inline double GetAsFloat() const { return absoluteValue; }
