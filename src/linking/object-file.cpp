@@ -4,6 +4,7 @@ using namespace ASM;
 
 bool ObjectFile::Deserialize(std::istream& stream)
 {
+    return false;
 }
 
 bool ObjectFile::Serialize(std::ostream& stream) const
